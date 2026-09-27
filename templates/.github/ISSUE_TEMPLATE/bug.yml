@@ -1,0 +1,42 @@
+name: Bug report
+description: Something is broken. Triage checks reproduction steps and expected behaviour.
+title: "fix: "
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What happens vs. what should happen
+      placeholder: Exporting an empty report returns 500; it should return an empty CSV.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a report with no rows
+        2. GET /reports/42.csv
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Anything the fix must not change. Write "None" if there are none.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] Regression test reproduces the bug and passes after the fix
+        - [ ] Empty report returns 200 with only the header row
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / environment
+      render: shell

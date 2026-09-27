@@ -1,0 +1,20 @@
+name: Agent Usage Report
+
+on:
+  schedule:
+    - cron: "41 1 * * 1" # weekly, Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    uses: kokoroou/agent-toolkit/.github/workflows/usage-report.yml@main
+    permissions:
+      actions: read
+      issues: write
+    with:
+      days: 30
+      minutes-budget: 2000
+      cost-budget-usd: "50"

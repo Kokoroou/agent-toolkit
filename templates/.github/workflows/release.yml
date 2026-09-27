@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: kokoroou/agent-toolkit/.github/workflows/release.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    with:
+      release-type: node # simple | node | python | go | rust | java | ...
+      target-branch: main
+      # setup-command: npm ci
+      # build-command: npm run build && tar czf dist.tgz dist
+      # artifact-paths: dist.tgz
+    secrets: inherit

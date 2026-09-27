@@ -1,0 +1,80 @@
+name: Agent Triage
+
+on:
+  issues:
+    types: [opened, reopened, edited, labeled]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: "17 */6 * * *" # sweep for anything still labelled needs-triage
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      issues: read
+    outputs:
+      issues: ${{ steps.pick.outputs.issues }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+          IS_PR: ${{ github.event.issue.pull_request != null }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          AUTHOR_TYPE: ${{ github.event.comment.user.type }}
+        run: |
+          set -euo pipefail
+          has() { jq -e --arg l "$1" 'index($l)' <<<"$LABELS" >/dev/null; }
+          pick='[]'
+          case "$EVENT" in
+            workflow_dispatch) pick="[$ISSUE]" ;;
+            schedule)
+              pick=$(gh issue list --repo "$GITHUB_REPOSITORY" --label needs-triage --state open --limit 10 --json number --jq 'map(.number)') ;;
+            issues)
+              if [[ "$ACTION" == labeled ]]; then
+                [[ "$LABEL" == needs-triage ]] && pick="[$ISSUE]"
+              elif [[ "$ACTION" == edited ]]; then
+                { has needs-triage || has awaiting-clarification; } && pick="[$ISSUE]"
+              else
+                pick="[$ISSUE]"
+              fi ;;
+            issue_comment)
+              [[ "$IS_PR" == false && "$AUTHOR_TYPE" != Bot ]] && has awaiting-clarification && pick="[$ISSUE]" ;;
+          esac
+          echo "issues=$pick" >>"$GITHUB_OUTPUT"
+          echo "Triage: $pick"
+
+  triage:
+    needs: collect
+    if: needs.collect.outputs.issues != '[]'
+    strategy:
+      matrix:
+        issue: ${{ fromJSON(needs.collect.outputs.issues) }}
+      max-parallel: 2
+      fail-fast: false
+    uses: kokoroou/agent-toolkit/.github/workflows/triage.yml@main
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+    with:
+      issue-number: ${{ matrix.issue }}
+      max-rounds: 3
+      dispatch-on-ready: agent-implement.yml
+      auto-implement-max-size: M
+      # project-owner: kokoroou
+      # project-number: "1"
+    secrets: inherit

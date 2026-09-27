@@ -1,0 +1,36 @@
+# Project CI. The name "CI" is referenced by agent-merge-gate.yml and the fix loop.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch: # lets the pipeline start CI when it pushed with GITHUB_TOKEN
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: kokoroou/agent-toolkit/.github/workflows/quality.yml@main
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    with:
+      # ── edit for your stack ───────────────────────────────────────────────
+      setup-command: npm ci
+      lint-command: npm run lint
+      format-check-command: npx prettier --check .
+      # coverage-command runs the tests too; its last stdout line must be the % number.
+      coverage-command: >-
+        npx jest --coverage --coverageReporters=json-summary >&2 &&
+        node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
+      baseline-branch: develop
+      coverage-tolerance: "0"
+    secrets: inherit

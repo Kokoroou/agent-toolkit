@@ -1,0 +1,37 @@
+name: Agent Implement
+
+on:
+  workflow_dispatch: # dispatched by triage when an issue becomes ready
+    inputs:
+      issue:
+        description: Issue number
+        required: true
+  issues:
+    types: [labeled] # a human adds `agent:implement` to start (or restart) the build agent
+
+permissions:
+  contents: read
+
+jobs:
+  implement:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'agent:implement'
+    uses: kokoroou/agent-toolkit/.github/workflows/implement.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    with:
+      mode: implement
+      issue-number: ${{ fromJSON(github.event.issue.number || inputs.issue) }}
+      base-branch: develop
+      # ── edit for your stack ───────────────────────────────────────────────
+      setup-command: npm ci
+      extra-allowed-tools: "Bash(npm ci),Bash(npm run:*),Bash(npm test:*),Bash(npx jest:*),Bash(npx prettier:*),Bash(npx eslint:*),Bash(npx tsc:*)"
+      model: sonnet
+      max-turns: 80
+      timeout-minutes: 45
+      # only used when no GitHub App is configured:
+      ci-dispatch-workflow: ci.yml
+      review-dispatch-workflow: agent-review.yml
+    secrets: inherit

@@ -1,0 +1,201 @@
+# Reusable: CI quality gate — lint → format → test → coverage (no drop vs baseline branch),
+# PR title format, and a free security scan for private repos on GitHub Free
+# (Semgrep CLI + Gitleaks instead of CodeQL, which needs GitHub Advanced Security).
+#
+# Project-specific commands come in as inputs; toolchains preinstalled on ubuntu-latest
+# (Node, Python, Go, Java, …) can be used directly, others belong in setup-command.
+#
+# Caller example: templates/.github/workflows/ci.yml
+name: quality
+
+on:
+  workflow_call:
+    inputs:
+      setup-command:
+        type: string
+        default: ""
+      lint-command:
+        type: string
+        default: ""
+      format-check-command:
+        type: string
+        default: ""
+      test-command:
+        type: string
+        default: ""
+      coverage-command:
+        description: >-
+          Command whose LAST line of stdout is the total line-coverage percentage
+          (e.g. "87.3"). Empty = no coverage gate. It may also run the tests, in which
+          case leave test-command empty to save minutes.
+        type: string
+        default: ""
+      coverage-tolerance:
+        description: Allowed drop in percentage points before failing (0 = must not decrease).
+        type: string
+        default: "0"
+      baseline-branch:
+        description: Branch whose coverage is the baseline; runs on it record a new baseline.
+        type: string
+        default: develop
+      enable-security:
+        type: boolean
+        default: true
+      semgrep-config:
+        type: string
+        default: p/default
+      enable-pr-title-check:
+        type: boolean
+        default: true
+      timeout-minutes:
+        type: number
+        default: 20
+    secrets:
+      gitleaks_license:
+        description: Only needed when the repo belongs to an organization.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    if: inputs.enable-pr-title-check && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Conventional Commit title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|refactor|test|docs|build|ci|chore|revert|style)(\([a-z0-9._/-]+\))?!?: [^A-Z].{1,100}[^.]$'
+          if [[ ! "$TITLE" =~ $re ]]; then
+            echo "::error::PR title '$TITLE' is not a Conventional Commit (e.g. 'feat(api): add export endpoint')."
+            exit 1
+          fi
+
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+
+      - name: Lint
+        if: inputs.lint-command != ''
+        run: ${{ inputs.lint-command }}
+
+      - name: Format check
+        if: inputs.format-check-command != ''
+        run: ${{ inputs.format-check-command }}
+
+      - name: Test
+        if: inputs.test-command != ''
+        run: ${{ inputs.test-command }}
+
+      - name: Coverage
+        id: cov
+        if: inputs.coverage-command != ''
+        env:
+          COVERAGE_COMMAND: ${{ inputs.coverage-command }}
+        run: |
+          set -euo pipefail
+          out=$(mktemp)
+          bash -euo pipefail -c "$COVERAGE_COMMAND" | tee "$out"
+          pct=$(tail -n 1 "$out" | grep -oE '[0-9]+(\.[0-9]+)?' | tail -n 1 || true)
+          [[ -n "$pct" ]] || { echo "::error::coverage-command must print the percentage on its last line"; exit 1; }
+          echo "pct=$pct" >>"$GITHUB_OUTPUT"
+          mkdir -p coverage-baseline && echo "$pct" >coverage-baseline/coverage.txt
+          echo "Coverage: **$pct%**" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Record coverage baseline
+        if: inputs.coverage-command != '' && github.ref == format('refs/heads/{0}', inputs.baseline-branch)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-baseline
+          path: coverage-baseline/coverage.txt
+          retention-days: 90
+
+      - name: Coverage must not drop
+        if: inputs.coverage-command != '' && github.ref != format('refs/heads/{0}', inputs.baseline-branch)
+        env:
+          PCT: ${{ steps.cov.outputs.pct }}
+          BASELINE: ${{ inputs.baseline-branch }}
+          TOL: ${{ inputs.coverage-tolerance }}
+        run: |
+          set -euo pipefail
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=coverage-baseline&per_page=100" \
+                --jq "[.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == \"$BASELINE\")][0].id // empty")
+          if [[ -z "$id" ]]; then
+            echo "::warning::No coverage baseline for '$BASELINE' yet — gate skipped. It is recorded by the first CI run on that branch."
+            exit 0
+          fi
+          tmp=$(mktemp -d)
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" >"$tmp/b.zip"
+          base=$(unzip -p "$tmp/b.zip" coverage.txt | tr -d '[:space:]')
+          echo "Baseline ($BASELINE): **$base%** · this run: **$PCT%** · tolerance: $TOL pp" >>"$GITHUB_STEP_SUMMARY"
+          if awk -v c="$PCT" -v b="$base" -v t="$TOL" 'BEGIN { exit !(c + t + 1e-9 < b) }'; then
+            echo "::error::Coverage dropped from $base% to $PCT% (tolerance $TOL pp)."
+            exit 1
+          fi
+
+  gitleaks:
+    if: inputs.enable-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_LICENSE: ${{ secrets.gitleaks_license }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  semgrep:
+    if: inputs.enable-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: semgrep/semgrep
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Semgrep (new findings only)
+        env:
+          CONFIG: ${{ inputs.semgrep-config }}
+          BASELINE: ${{ github.event_name == 'pull_request' && github.base_ref || inputs.baseline-branch }}
+          REF: ${{ github.ref }}
+        run: |
+          set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          args="--config $CONFIG --error --metrics off --sarif-output=semgrep.sarif"
+          if [ "$REF" != "refs/heads/$BASELINE" ] && git rev-parse --verify -q "origin/$BASELINE" >/dev/null; then
+            args="$args --baseline-commit $(git merge-base "origin/$BASELINE" HEAD)"
+          fi
+          # shellcheck disable=SC2086
+          semgrep scan $args || { echo "::error::Semgrep found new issues — see the semgrep-results artifact."; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: semgrep.sarif
+          if-no-files-found: ignore

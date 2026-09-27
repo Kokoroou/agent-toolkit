@@ -1,0 +1,41 @@
+# Releases the toolkit itself: release-please bumps version.txt + plugin/marketplace
+# versions, tags vX.Y.Z, then the moving major tag (v1, v2, …) is updated so projects
+# can pin `@v1` and still receive non-breaking fixes.
+name: toolkit-release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    with:
+      config-file: release-please-config.json
+      manifest-file: .release-please-manifest.json
+    secrets: inherit
+
+  major-tag:
+    needs: release
+    if: needs.release.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag-name }}
+      - name: Move major tag
+        env:
+          TAG: ${{ needs.release.outputs.tag-name }}
+        run: |
+          major="${TAG%%.*}"
+          git tag -f "$major" "$TAG"
+          git push -f origin "refs/tags/$major"

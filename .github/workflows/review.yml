@@ -1,0 +1,147 @@
+# Reusable: AI code review of one PR.
+#
+# Runs in parallel with CI. Posts inline comments for blocking findings plus one summary
+# comment, and records the verdict as the commit status `agent/review` on the head SHA —
+# the merge gate requires that status, so a stale approval never covers a newer push.
+#
+# Caller example: templates/.github/workflows/agent-review.yml
+name: review
+
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        type: number
+        required: true
+      model:
+        type: string
+        default: sonnet
+      max-turns:
+        type: number
+        default: 30
+      timeout-minutes:
+        type: number
+        default: 15
+      status-context:
+        description: Commit status name the merge gate looks for.
+        type: string
+        default: agent/review
+      allowed-bots:
+        type: string
+        default: "*"
+      toolkit-marketplace:
+        type: string
+        default: https://github.com/kokoroou/agent-toolkit.git
+    secrets:
+      anthropic_api_key:
+        required: false
+      claude_code_oauth_token:
+        required: false
+    outputs:
+      verdict:
+        description: approve | request-changes | needs-human | skipped
+        value: ${{ jobs.review.outputs.verdict }}
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      statuses: write
+    concurrency:
+      group: agent-review-${{ github.repository }}-${{ inputs.pr-number }}
+      cancel-in-progress: true
+    outputs:
+      verdict: ${{ steps.apply.outputs.verdict || steps.pre.outputs.verdict }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ inputs.pr-number }}
+      CONTEXT: ${{ inputs.status-context }}
+      MARKER: "<!-- agent-toolkit:review -->"
+    steps:
+      - name: Pre-checks
+        id: pre
+        run: |
+          set -euo pipefail
+          json=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state,isDraft,headRefOid)
+          echo "sha=$(jq -r .headRefOid <<<"$json")" >>"$GITHUB_OUTPUT"
+          if [[ $(jq -r .state <<<"$json") != OPEN || $(jq -r .isDraft <<<"$json") == true ]]; then
+            echo "verdict=skipped" >>"$GITHUB_OUTPUT"; echo "skip=true" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$(jq -r .headRefOid <<<"$json")" \
+            -f state=pending -f context="$CONTEXT" -f description="Claude review running" >/dev/null
+
+      - uses: actions/checkout@v4
+        if: steps.pre.outputs.skip != 'true'
+        with:
+          ref: ${{ steps.pre.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Claude review
+        id: claude
+        if: steps.pre.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          allowed_bots: ${{ inputs.allowed-bots }}
+          plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
+          plugins: pipeline@agent-toolkit
+          prompt: /pipeline:review-pr ${{ inputs.pr-number }}
+          claude_args: >-
+            --model ${{ inputs.model }}
+            --max-turns ${{ inputs.max-turns }}
+            --allowedTools "Read,Grep,Glob,Task,Agent,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),mcp__github_inline_comment__create_inline_comment"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","risk"],"properties":{"verdict":{"enum":["approve","request-changes","needs-human"]},"summary":{"type":"string","maxLength":4000},"risk":{"enum":["low","medium","high"]}}}'
+
+      - name: Publish verdict
+        id: apply
+        if: steps.pre.outputs.skip != 'true' && !cancelled()
+        env:
+          OUT: ${{ steps.claude.outputs.structured_output }}
+          SHA: ${{ steps.pre.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          [[ -n "$OUT" ]] || OUT='{"verdict":"needs-human","summary":"Review did not complete (error, timeout or max-turns).","risk":"medium"}'
+          verdict=$(jq -r .verdict <<<"$OUT"); risk=$(jq -r .risk <<<"$OUT")
+          case "$verdict" in
+            approve)         state=success; desc="Approved by Claude" ;;
+            request-changes) state=failure; desc="Changes requested by Claude" ;;
+            *)               state=failure; desc="Needs human review" ;;
+          esac
+          gh api "repos/$R/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
+            -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          icon=$([[ $verdict == approve ]] && echo ✅ || echo ⚠️)
+          body=$(mktemp)
+          { echo "$MARKER"; echo "$icon **Claude review** of \`${SHA:0:7}\`: **$verdict** (risk \`$risk\`)"; echo; jq -r .summary <<<"$OUT"; } >"$body"
+          gh pr comment "$PR" --repo "$R" --body-file "$body" >/dev/null
+          if [[ "$verdict" == needs-human || "$risk" == high ]]; then
+            l=$([[ "$risk" == high ]] && echo risk:high || echo needs-human)
+            gh label create "$l" --repo "$R" --color d93f0b >/dev/null 2>&1 || true
+            gh pr edit "$PR" --repo "$R" --add-label "$l" >/dev/null
+          fi
+          echo "verdict=$verdict" >>"$GITHUB_OUTPUT"
+
+      - name: Usage summary
+        if: always() && steps.claude.outputs.execution_file != ''
+        env:
+          EXEC: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          jq -r '[.[] | select(.type == "result")] | last // {} |
+            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
+            "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload transcript
+        if: always() && steps.claude.outputs.execution_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript-review-${{ inputs.pr-number }}-${{ github.run_attempt }}
+          path: ${{ steps.claude.outputs.execution_file }}
+          retention-days: 30

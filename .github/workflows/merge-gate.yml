@@ -1,0 +1,266 @@
+# Reusable: self-written merge gate.
+#
+# GitHub Free + private repo has no branch protection / rulesets, so native auto-merge
+# cannot be gated on checks. This workflow is the gate: the caller runs it on
+# `workflow_run: completed` of CI (and of the review workflow); it inspects every check
+# run and commit status on the PR head through the Checks/Statuses APIs and decides:
+#
+#   merged  – everything green → squash-merge, delete branch, close the linked issue
+#   fix     – a check failed on an agent PR → caller should run implement.yml mode=fix
+#   wait    – checks still pending / required status missing
+#   blocked – blocking label, conflict, bad title → left for a human
+#   skip    – not a PR this gate manages
+#
+# After a merge it runs an optional smoke test on the base branch and opens a revert PR
+# if it fails.
+#
+# Caller example: templates/.github/workflows/agent-merge-gate.yml
+name: merge-gate
+
+on:
+  workflow_call:
+    inputs:
+      head-sha:
+        description: Head commit that just finished CI (github.event.workflow_run.head_sha).
+        type: string
+        required: true
+      base-branch:
+        type: string
+        default: develop
+      required-label:
+        description: Only PRs with this label are auto-merged. Empty = every PR into base-branch.
+        type: string
+        default: agent
+      block-labels:
+        type: string
+        default: needs-human,risk:high,do-not-merge,wip
+      required-statuses:
+        description: Comma-separated commit-status contexts that must be `success`.
+        type: string
+        default: agent/review
+      required-checks:
+        description: Comma-separated check-run names that must exist and succeed (all present ones must pass anyway).
+        type: string
+        default: ""
+      ignore-checks:
+        description: Comma-separated check-run names ignored by the gate.
+        type: string
+        default: ""
+      merge-method:
+        type: string
+        default: squash
+      setup-command:
+        type: string
+        default: ""
+      smoke-command:
+        description: Post-merge smoke test on the base branch. Empty = skip.
+        type: string
+        default: ""
+      ci-dispatch-workflow:
+        description: CI workflow file to dispatch on base-branch after a merge made with GITHUB_TOKEN (records the coverage baseline).
+        type: string
+        default: ""
+    secrets:
+      agent_app_id:
+        required: false
+      agent_app_private_key:
+        required: false
+    outputs:
+      action:
+        value: ${{ jobs.gate.outputs.action }}
+      pr-number:
+        value: ${{ jobs.gate.outputs.pr }}
+      head-sha:
+        value: ${{ inputs.head-sha }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      checks: read
+      statuses: read
+      actions: write
+    concurrency:
+      group: merge-gate-${{ github.repository }}-${{ inputs.head-sha }}
+      cancel-in-progress: false
+    outputs:
+      action: ${{ steps.decide.outputs.action }}
+      pr: ${{ steps.decide.outputs.pr }}
+      merge-sha: ${{ steps.decide.outputs.merge_sha }}
+      issue: ${{ steps.decide.outputs.issue }}
+    env:
+      HAS_APP: ${{ secrets.agent_app_id != '' }}
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.agent_app_id }}
+          private-key: ${{ secrets.agent_app_private_key }}
+
+      - name: Decide and merge
+        id: decide
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SHA: ${{ inputs.head-sha }}
+          BASE: ${{ inputs.base-branch }}
+          REQ_LABEL: ${{ inputs.required-label }}
+          BLOCK_LABELS: ${{ inputs.block-labels }}
+          REQ_STATUSES: ${{ inputs.required-statuses }}
+          REQ_CHECKS: ${{ inputs.required-checks }}
+          IGNORE_CHECKS: ${{ inputs.ignore-checks }}
+          METHOD: ${{ inputs.merge-method }}
+          DISPATCH: ${{ inputs.ci-dispatch-workflow }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          out() { echo "$1=$2" >>"$GITHUB_OUTPUT"; }
+          finish() { out action "$1"; echo "### merge-gate: \`$1\` — $2" >>"$GITHUB_STEP_SUMMARY"; echo "$1: $2"; exit 0; }
+          csv_has() { [[ ",$1," == *",$2,"* ]]; }
+
+          pr=$(gh api "repos/$R/commits/$SHA/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')
+          [[ -n "$pr" ]] || finish skip "no open PR for $SHA"
+          out pr "$pr"
+          json=$(gh pr view "$pr" --repo "$R" --json baseRefName,headRefOid,isDraft,labels,title,body,isCrossRepository)
+          [[ $(jq -r .baseRefName <<<"$json") == "$BASE" ]] || finish skip "PR #$pr does not target $BASE"
+          [[ $(jq -r .isCrossRepository <<<"$json") == false ]] || finish skip "PR #$pr is from a fork"
+          [[ $(jq -r .headRefOid <<<"$json") == "$SHA" ]] || finish skip "PR #$pr head moved past $SHA"
+          [[ $(jq -r .isDraft <<<"$json") == false ]] || finish skip "PR #$pr is a draft"
+          labels=$(jq -r '[.labels[].name] | join(",")' <<<"$json")
+          if [[ -n "$REQ_LABEL" ]] && ! csv_has "$labels" "$REQ_LABEL"; then finish skip "PR #$pr lacks label $REQ_LABEL"; fi
+          issue=$(jq -r .body <<<"$json" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+' || true)
+          out issue "${issue:-}"
+
+          IFS=, read -ra blocks <<<"$BLOCK_LABELS"
+          for b in "${blocks[@]}"; do
+            [[ -n "$b" ]] && csv_has "$labels" "$b" && finish blocked "PR #$pr has label $b"
+          done
+
+          # --- check runs (GitHub Actions jobs and other apps) ---
+          checks=$(gh api "repos/$R/commits/$SHA/check-runs?per_page=100" --paginate \
+                    --jq '.check_runs[] | {name, status, conclusion}' | jq -s --arg ign "$IGNORE_CHECKS" \
+                    '($ign | split(",")) as $i | [ .[] | select(.name as $n | $i | index($n) | not) ]
+                     | group_by(.name) | map(last)')
+          echo "$checks" | jq -r '.[] | "  check  \(.name): \(.status)/\(.conclusion)"'
+          [[ $(jq '[.[] | select(.status != "completed")] | length' <<<"$checks") -eq 0 ]] || finish wait "check runs still in progress"
+          failed=$(jq -r '[.[] | select(.conclusion as $c | ["success","skipped","neutral"] | index($c) | not) | .name] | join(", ")' <<<"$checks")
+          IFS=, read -ra reqc <<<"$REQ_CHECKS"
+          for c in "${reqc[@]}"; do
+            [[ -z "$c" ]] && continue
+            jq -e --arg c "$c" 'map(.name) | index($c)' <<<"$checks" >/dev/null || finish wait "required check '$c' has not reported"
+          done
+
+          # --- commit statuses (e.g. agent/review) ---
+          statuses=$(gh api "repos/$R/commits/$SHA/status" --jq '.statuses | map({context, state})')
+          echo "$statuses" | jq -r '.[] | "  status \(.context): \(.state)"'
+          IFS=, read -ra reqs <<<"$REQ_STATUSES"
+          for c in "${reqs[@]}"; do
+            [[ -z "$c" ]] && continue
+            st=$(jq -r --arg c "$c" '.[] | select(.context == $c) | .state' <<<"$statuses")
+            case "$st" in
+              success) ;;
+              ""|pending) finish wait "status '$c' is ${st:-missing}" ;;
+              *) failed="${failed:+$failed, }$c" ;;
+            esac
+          done
+          sfailed=$(jq -r '[.[] | select(.state == "failure" or .state == "error") | .context] | join(", ")' <<<"$statuses")
+          [[ -n "$sfailed" ]] && failed="${failed:+$failed, }$sfailed"
+          if [[ -n "$failed" ]]; then
+            [[ -n "$REQ_LABEL" ]] && finish fix "failed: $failed"
+            finish blocked "failed: $failed"
+          fi
+
+          title=$(jq -r .title <<<"$json")
+          re='^(feat|fix|perf|refactor|test|docs|build|ci|chore|revert|style)(\([a-z0-9._/-]+\))?!?: .+'
+          [[ "$title" =~ $re ]] || { gh pr comment "$pr" --repo "$R" --body "merge-gate: title is not a Conventional Commit; not merging." >/dev/null; finish blocked "bad title"; }
+
+          # --- mergeability (GitHub computes it lazily) ---
+          for _ in 1 2 3 4 5 6; do
+            m=$(gh pr view "$pr" --repo "$R" --json mergeable --jq .mergeable)
+            [[ "$m" != UNKNOWN ]] && break; sleep 5
+          done
+          case "$m" in
+            MERGEABLE) ;;
+            CONFLICTING)
+              gh label create needs-human --repo "$R" --color d93f0b >/dev/null 2>&1 || true
+              gh pr edit "$pr" --repo "$R" --add-label needs-human >/dev/null
+              gh pr comment "$pr" --repo "$R" --body "merge-gate: merge conflict with \`$BASE\`; needs a human to resolve." >/dev/null
+              finish blocked "merge conflict" ;;
+            *) finish wait "mergeable=$m" ;;
+          esac
+
+          gh pr merge "$pr" --repo "$R" "--$METHOD" --delete-branch --match-head-commit "$SHA"
+          merge_sha=$(gh pr view "$pr" --repo "$R" --json mergeCommit --jq .mergeCommit.oid)
+          out merge_sha "$merge_sha"
+          # Closing keywords only fire on the default branch; close the issue explicitly.
+          if [[ -n "${issue:-}" ]] && [[ $(gh issue view "$issue" --repo "$R" --json state --jq .state) == OPEN ]]; then
+            gh issue close "$issue" --repo "$R" --comment "Merged in #$pr ($merge_sha) into \`$BASE\`." >/dev/null
+          fi
+          if [[ "$HAS_APP" != true && -n "$DISPATCH" ]]; then
+            gh workflow run "$DISPATCH" --repo "$R" --ref "$BASE" || true
+          fi
+          finish merged "PR #$pr → $BASE ($merge_sha)"
+
+  smoke:
+    needs: gate
+    if: needs.gate.outputs.action == 'merged' && inputs.smoke-command != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      HAS_APP: ${{ secrets.agent_app_id != '' }}
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.agent_app_id }}
+          private-key: ${{ secrets.agent_app_private_key }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.merge-sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+      - name: Smoke test
+        id: smoke
+        run: ${{ inputs.smoke-command }}
+      - name: Open revert PR
+        if: failure() && steps.smoke.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          MERGE_SHA: ${{ needs.gate.outputs.merge-sha }}
+          PR: ${{ needs.gate.outputs.pr }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          BASE: ${{ inputs.base-branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          git config user.name "agent-toolkit[bot]"
+          git config user.email "agent-toolkit[bot]@users.noreply.github.com"
+          branch="revert/pr-$PR"
+          git checkout -b "$branch"
+          git revert --no-edit "$MERGE_SHA"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${R}.git" "HEAD:refs/heads/$branch"
+          for l in revert needs-human; do gh label create "$l" --repo "$R" --color d93f0b >/dev/null 2>&1 || true; done
+          title=$(gh pr view "$PR" --repo "$R" --json title --jq .title)
+          url=$(gh pr create --repo "$R" --base "$BASE" --head "$branch" --label revert --label needs-human \
+                  --title "revert: ${title#*: }" \
+                  --body "Smoke test on \`$BASE\` failed after merging #$PR ($MERGE_SHA). [Smoke run]($RUN_URL)")
+          gh pr comment "$PR" --repo "$R" --body "🚨 Post-merge smoke test failed on \`$BASE\`. Revert: $url" >/dev/null
+          if [[ -n "$ISSUE" ]]; then
+            gh issue reopen "$ISSUE" --repo "$R" >/dev/null || true
+            gh issue edit "$ISSUE" --repo "$R" --add-label needs-human >/dev/null || true
+          fi

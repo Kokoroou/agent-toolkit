@@ -1,0 +1,276 @@
+# Reusable: triage one issue.
+#
+# Claude only *reads* the issue and returns a structured decision; this workflow
+# applies labels / comments / Projects fields deterministically from that decision,
+# so a prompt-injected issue cannot make the agent do anything except pick labels.
+#
+# Caller example: templates/.github/workflows/agent-triage.yml
+name: triage
+
+on:
+  workflow_call:
+    inputs:
+      issue-number:
+        description: Issue to triage.
+        type: number
+        required: true
+      max-rounds:
+        description: Max clarification rounds before handing the issue to a human.
+        type: number
+        default: 3
+      model:
+        description: Claude model id or alias.
+        type: string
+        default: sonnet
+      max-turns:
+        type: number
+        default: 15
+      timeout-minutes:
+        type: number
+        default: 10
+      project-owner:
+        description: GitHub Projects (v2) owner (user or org). Empty = skip Projects.
+        type: string
+        default: ""
+      project-number:
+        description: GitHub Projects (v2) number. Empty = skip Projects.
+        type: string
+        default: ""
+      dispatch-on-ready:
+        description: >-
+          Workflow file (e.g. agent-implement.yml, needs a workflow_dispatch input `issue`)
+          to dispatch when an issue becomes ready. Labels added with GITHUB_TOKEN do not
+          trigger `issues: labeled`, workflow_dispatch does. Empty = don't auto-implement.
+        type: string
+        default: ""
+      auto-implement-max-size:
+        description: Largest size (XS|S|M|L) that is auto-implemented; bigger issues wait for a human.
+        type: string
+        default: M
+      toolkit-marketplace:
+        description: Git URL of the plugin marketplace to install the pipeline plugin from.
+        type: string
+        default: https://github.com/kokoroou/agent-toolkit.git
+      allowed-bots:
+        description: >-
+          Bots allowed to trigger Claude (claude-code-action refuses bot actors by default,
+          but agent pushes/PRs are made by a bot). "*" is fine for private repos.
+        type: string
+        default: "*"
+    secrets:
+      anthropic_api_key:
+        required: false
+      claude_code_oauth_token:
+        required: false
+      project_token:
+        description: Classic PAT with `project` + `repo` scopes (GITHUB_TOKEN cannot write user-owned Projects).
+        required: false
+    outputs:
+      decision:
+        description: ready | clarify | needs-human | reject | skipped
+        value: ${{ jobs.triage.outputs.decision }}
+      risk:
+        value: ${{ jobs.triage.outputs.risk }}
+      size:
+        value: ${{ jobs.triage.outputs.size }}
+      priority:
+        value: ${{ jobs.triage.outputs.priority }}
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      issues: write
+      actions: write
+    concurrency:
+      group: agent-triage-${{ github.repository }}-${{ inputs.issue-number }}
+      cancel-in-progress: true
+    outputs:
+      decision: ${{ steps.apply.outputs.decision || steps.pre.outputs.decision }}
+      risk: ${{ steps.apply.outputs.risk }}
+      size: ${{ steps.apply.outputs.size }}
+      priority: ${{ steps.apply.outputs.priority }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: ${{ inputs.issue-number }}
+      MARKER_Q: "<!-- agent-toolkit:triage-question -->"
+      MARKER_S: "<!-- agent-toolkit:triage-summary -->"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Pre-checks and clarification round count
+        id: pre
+        run: |
+          set -euo pipefail
+          json=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels,comments)
+          state=$(jq -r .state <<<"$json")
+          labels=$(jq -r '[.labels[].name] | join(",")' <<<"$json")
+          rounds=$(jq --arg m "$MARKER_Q" '[.comments[] | select(.body | contains($m))] | length' <<<"$json")
+          echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
+          if [[ "$state" != "OPEN" ]] || [[ ",$labels," == *",needs-human,"* ]]; then
+            echo "Issue #$ISSUE is closed or owned by a human; skipping."
+            echo "decision=skipped" >> "$GITHUB_OUTPUT"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Claude triage (read-only)
+        id: claude
+        if: steps.pre.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          github_token: ${{ github.token }}
+          allowed_bots: ${{ inputs.allowed-bots }}
+          plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
+          plugins: pipeline@agent-toolkit
+          prompt: /pipeline:triage-issue ${{ inputs.issue-number }} ${{ steps.pre.outputs.rounds }} ${{ inputs.max-rounds }}
+          claude_args: >-
+            --model ${{ inputs.model }}
+            --max-turns ${{ inputs.max-turns }}
+            --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search issues:*),Bash(gh label list:*)"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string","maxLength":1500},"questions":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":400}},"acceptance_criteria":{"type":"array","maxItems":15,"items":{"type":"string","maxLength":400}},"duplicate_of":{"type":["integer","null"]}}}'
+
+      - name: Apply decision
+        id: apply
+        if: steps.pre.outputs.skip != 'true'
+        env:
+          OUT: ${{ steps.claude.outputs.structured_output }}
+          ROUNDS: ${{ steps.pre.outputs.rounds }}
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$OUT" ]] || ! jq -e .decision <<<"$OUT" >/dev/null; then
+            echo "::error::Claude returned no structured decision"; exit 1
+          fi
+          get() { jq -r "$1" <<<"$OUT"; }
+          decision=$(get .decision); risk=$(get .risk); size=$(get .size)
+          prio=$(get .priority); type=$(get .type); score=$(get .score)
+          # Guardrail: the agent cannot ask more than max-rounds times.
+          if [[ "$decision" == clarify && "$ROUNDS" -ge "$MAX_ROUNDS" ]]; then decision=needs-human; fi
+
+          existing=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 500 --json name --jq '.[].name')
+          ensure() { grep -qxF "$1" <<<"$existing" || gh label create "$1" --repo "$GITHUB_REPOSITORY" --color "$2" >/dev/null || true; }
+          current=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          remove=()
+          while read -r l; do
+            case "$l" in type:*|priority:*|risk:*|size:*|needs-triage|awaiting-clarification|ready-for-plan) remove+=(--remove-label "$l");; esac
+          done <<<"$current"
+          add=("type:$type" "priority:$prio" "risk:$risk" "size:$size")
+          case "$decision" in
+            ready)       add+=(ready-for-plan) ;;
+            clarify)     add+=(awaiting-clarification) ;;
+            needs-human) add+=(needs-human) ;;
+          esac
+          for l in "${add[@]}"; do ensure "$l" ededed; done
+          args=(); for l in "${add[@]}"; do args+=(--add-label "$l"); done
+          [[ ${#remove[@]} -gt 0 ]] && gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${remove[@]}" >/dev/null || true
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${args[@]}" >/dev/null
+
+          body=$(mktemp)
+          summary=$(get .summary)
+          case "$decision" in
+            clarify)
+              {
+                echo "$MARKER_Q"
+                echo "Thanks! Before this can be planned I need a bit more detail (round $((ROUNDS + 1))/$MAX_ROUNDS):"
+                echo
+                jq -r '.questions | to_entries[] | "\(.key + 1). \(.value)"' <<<"$OUT"
+                echo
+                echo "_Reply in a comment or edit the issue; triage re-runs automatically._"
+              } >"$body" ;;
+            ready)
+              {
+                echo "$MARKER_S"
+                echo "**Triage:** ready for planning — score $score/5 · \`$type\` · \`$prio\` · risk \`$risk\` · size \`$size\`"
+                echo
+                echo "$summary"
+                echo
+                echo "**Acceptance criteria**"
+                jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
+              } >"$body" ;;
+            needs-human)
+              { echo "$MARKER_S"; echo "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)."; echo; echo "$summary"; } >"$body" ;;
+            reject)
+              { echo "$MARKER_S"; echo "**Triage:** not actionable."; echo; echo "$summary"; } >"$body"
+              dup=$(get '.duplicate_of // empty')
+              if [[ -n "$dup" ]]; then
+                echo; echo "Duplicate of #$dup." >>"$body"
+                gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason "not planned" --comment "$(cat "$body")" >/dev/null
+                : >"$body"
+              fi ;;
+          esac
+          [[ -s "$body" ]] && gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$body" >/dev/null
+
+          {
+            echo "decision=$decision"; echo "risk=$risk"; echo "size=$size"; echo "priority=$prio"
+          } >>"$GITHUB_OUTPUT"
+          echo "### Triage #$ISSUE → \`$decision\` (score $score, $prio, risk $risk, size $size)" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Add to GitHub Project and set fields
+        if: steps.apply.outputs.decision == 'ready' && inputs.project-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.project_token }}
+          OWNER: ${{ inputs.project-owner || github.repository_owner }}
+          NUMBER: ${{ inputs.project-number }}
+          PRIORITY: ${{ steps.apply.outputs.priority }}
+          SIZE: ${{ steps.apply.outputs.size }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$GH_TOKEN" ]]; then echo "::warning::project_token secret not set; skipping Projects."; exit 0; fi
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ISSUE"
+          item=$(gh project item-add "$NUMBER" --owner "$OWNER" --url "$url" --format json --jq .id)
+          pid=$(gh project view "$NUMBER" --owner "$OWNER" --format json --jq .id)
+          fields=$(gh project field-list "$NUMBER" --owner "$OWNER" --format json --limit 100)
+          set_field() {
+            local fid oid
+            fid=$(jq -r --arg f "$1" '.fields[] | select(.name == $f) | .id' <<<"$fields")
+            oid=$(jq -r --arg f "$1" --arg v "$2" '.fields[] | select(.name == $f) | .options[]? | select(.name == $v) | .id' <<<"$fields")
+            if [[ -n "$fid" && -n "$oid" ]]; then
+              gh project item-edit --id "$item" --project-id "$pid" --field-id "$fid" --single-select-option-id "$oid" >/dev/null
+              echo "Set $1=$2"
+            else
+              echo "Project has no single-select field '$1' with option '$2'; skipped."
+            fi
+          }
+          set_field Priority "$PRIORITY"
+          set_field Size "$SIZE"
+
+      - name: Hand off to the build agent
+        if: steps.apply.outputs.decision == 'ready' && inputs.dispatch-on-ready != ''
+        env:
+          WF: ${{ inputs.dispatch-on-ready }}
+          RISK: ${{ steps.apply.outputs.risk }}
+          SIZE: ${{ steps.apply.outputs.size }}
+          MAX_SIZE: ${{ inputs.auto-implement-max-size }}
+        run: |
+          set -euo pipefail
+          order=(XS S M L XL)
+          idx() { local i; for i in "${!order[@]}"; do [[ "${order[$i]}" == "$1" ]] && echo "$i" && return; done; echo 99; }
+          if [[ "$RISK" == high || $(idx "$SIZE") -gt $(idx "$MAX_SIZE") ]]; then
+            echo "Not auto-implementing (risk=$RISK, size=$SIZE > $MAX_SIZE); a human can add label agent:implement."
+            exit 0
+          fi
+          gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" -f issue="$ISSUE"
+          echo "Dispatched $WF for #$ISSUE" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Usage summary
+        if: always() && steps.claude.outputs.execution_file != ''
+        env:
+          EXEC: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          jq -r '[.[] | select(.type == "result")] | last // {} |
+            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
+            "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload transcript
+        if: always() && steps.claude.outputs.execution_file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: transcript-triage-${{ inputs.issue-number }}-${{ github.run_attempt }}
+          path: ${{ steps.claude.outputs.execution_file }}
+          retention-days: 30

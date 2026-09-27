@@ -1,0 +1,39 @@
+name: Feature / change request
+description: Something the agent pipeline should build. Triage checks goal, constraints and acceptance criteria.
+title: "feat: "
+labels: [needs-triage]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What problem does this solve, and what should be true when it is done?
+      placeholder: Users can export their report as CSV so they can open it in Excel.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Scope limits, compatibility, performance, tech choices, things NOT to change. Write "None" if there are none.
+      placeholder: |
+        - No new dependencies
+        - Must keep the existing JSON endpoint unchanged
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, testable statements. Each one becomes a test.
+      placeholder: |
+        - [ ] GET /reports/{id}.csv returns text/csv with a header row
+        - [ ] Empty reports return only the header row
+        - [ ] Unknown id returns 404
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Links, screenshots, related issues, code pointers (optional).

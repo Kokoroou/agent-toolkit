@@ -1,0 +1,57 @@
+# Runs after CI or Agent Review finishes. Merges green agent PRs into develop, or
+# sends failed ones back to the build agent (circuit breaker in implement.yml).
+# workflow_run only fires for workflow files on the default branch.
+name: Agent Merge Gate
+
+on:
+  workflow_run:
+    workflows: [CI, Agent Review]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch'
+    uses: kokoroou/agent-toolkit/.github/workflows/merge-gate.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      checks: read
+      statuses: read
+      actions: write
+    with:
+      head-sha: ${{ github.event.workflow_run.head_sha }}
+      base-branch: develop
+      required-label: agent
+      required-statuses: agent/review
+      # ── edit for your stack ───────────────────────────────────────────────
+      setup-command: npm ci
+      smoke-command: npm run build && npm test -- --testPathPattern=smoke
+      ci-dispatch-workflow: ci.yml
+    secrets: inherit
+
+  fix:
+    needs: gate
+    if: needs.gate.outputs.action == 'fix'
+    uses: kokoroou/agent-toolkit/.github/workflows/implement.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    with:
+      mode: fix
+      pr-number: ${{ fromJSON(needs.gate.outputs.pr-number) }}
+      head-sha: ${{ needs.gate.outputs.head-sha }}
+      base-branch: develop
+      max-fix-attempts: 3
+      ci-workflow: CI
+      # ── keep in sync with agent-implement.yml ─────────────────────────────
+      setup-command: npm ci
+      extra-allowed-tools: "Bash(npm ci),Bash(npm run:*),Bash(npm test:*),Bash(npx jest:*),Bash(npx prettier:*),Bash(npx eslint:*),Bash(npx tsc:*)"
+      ci-dispatch-workflow: ci.yml
+      review-dispatch-workflow: agent-review.yml
+    secrets: inherit

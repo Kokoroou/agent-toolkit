@@ -1,0 +1,116 @@
+# Reusable: release on `main` with release-please.
+#
+# Each push to main (i.e. after you merge develop → main) updates a release PR that
+# bumps the version and changelog from Conventional Commits. Merging that release PR
+# creates the tag + GitHub Release, then the build job attaches artifacts.
+#
+# Caller example: templates/.github/workflows/release.yml
+name: release
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: release-please strategy (simple, node, python, go, rust, java, …). Ignored when config-file is set.
+        type: string
+        default: simple
+      target-branch:
+        type: string
+        default: main
+      config-file:
+        description: Optional release-please-config.json path (monorepos, custom sections).
+        type: string
+        default: ""
+      manifest-file:
+        type: string
+        default: ""
+      setup-command:
+        type: string
+        default: ""
+      build-command:
+        description: Builds release artifacts. Empty = no build.
+        type: string
+        default: ""
+      artifact-paths:
+        description: Newline-separated globs uploaded to the GitHub Release.
+        type: string
+        default: ""
+    secrets:
+      agent_app_id:
+        description: Optional — with an App token the release PR also triggers CI.
+        required: false
+      agent_app_private_key:
+        required: false
+    outputs:
+      release-created:
+        value: ${{ jobs.release-please.outputs.release_created }}
+      tag-name:
+        value: ${{ jobs.release-please.outputs.tag_name }}
+      version:
+        value: ${{ jobs.release-please.outputs.version }}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      HAS_APP: ${{ secrets.agent_app_id != '' }}
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.agent_app_id }}
+          private-key: ${{ secrets.agent_app_private_key }}
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          token: ${{ steps.app.outputs.token || github.token }}
+          target-branch: ${{ inputs.target-branch }}
+          release-type: ${{ inputs.config-file == '' && inputs.release-type || '' }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true' && inputs.build-command != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+      - name: Build
+        run: ${{ inputs.build-command }}
+      - name: Upload artifacts to the release
+        if: inputs.artifact-paths != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          PATHS: ${{ inputs.artifact-paths }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob globstar
+          files=()
+          while IFS= read -r g; do
+            [[ -z "$g" ]] && continue
+            # shellcheck disable=SC2206
+            files+=($g)
+          done <<<"$PATHS"
+          [[ ${#files[@]} -gt 0 ]] || { echo "::error::no files match artifact-paths"; exit 1; }
+          gh release upload "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber

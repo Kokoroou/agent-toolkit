@@ -1,0 +1,33 @@
+# Name is referenced by agent-merge-gate.yml.
+name: Agent Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    # Review agent PRs automatically; any other PR when someone adds the `agent` label.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'agent') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'agent'))
+    uses: kokoroou/agent-toolkit/.github/workflows/review.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      statuses: write
+    with:
+      pr-number: ${{ fromJSON(github.event.pull_request.number || inputs.pr) }}
+      model: sonnet
+    secrets: inherit

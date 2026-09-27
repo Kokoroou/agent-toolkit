@@ -1,0 +1,105 @@
+# Reusable: guardrail report — GitHub Actions minutes and Claude API spend.
+#
+# Sums billable Actions minutes of this repo's runs (Free plan: 2,000 min/month shared by
+# all private repos of the account) and the Claude cost recorded in the transcript
+# artifacts of the agent workflows, then keeps one pinned-style issue up to date.
+#
+# Caller example: templates/.github/workflows/agent-usage-report.yml
+name: usage-report
+
+on:
+  workflow_call:
+    inputs:
+      days:
+        type: number
+        default: 30
+      minutes-budget:
+        description: Monthly Actions minutes budget to compare against.
+        type: number
+        default: 2000
+      cost-budget-usd:
+        description: Claude spend budget for the window in USD. 0 = no budget line.
+        type: string
+        default: "0"
+      issue-label:
+        type: string
+        default: pipeline-usage
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DAYS: ${{ inputs.days }}
+      MIN_BUDGET: ${{ inputs.minutes-budget }}
+      COST_BUDGET: ${{ inputs.cost-budget-usd }}
+      LABEL: ${{ inputs.issue-label }}
+    steps:
+      - name: Collect and publish
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          since=$(date -u -d "-$DAYS days" +%Y-%m-%dT%H:%M:%SZ)
+          tmp=$(mktemp -d)
+
+          # Actions minutes (billable ms per OS; macOS x10, Windows x2 on the quota).
+          gh api "repos/$R/actions/runs?created=>=${since:0:10}&per_page=100" --paginate \
+            --jq '.workflow_runs[] | [.id, .name] | @tsv' >"$tmp/runs.tsv"
+          : >"$tmp/minutes.tsv"
+          while IFS=$'\t' read -r id name; do
+            ms=$(gh api "repos/$R/actions/runs/$id/timing" \
+                   --jq '((.billable.UBUNTU.total_ms // 0) + 2 * (.billable.WINDOWS.total_ms // 0) + 10 * (.billable.MACOS.total_ms // 0))' 2>/dev/null || echo 0)
+            printf '%s\t%s\n' "$name" "$ms" >>"$tmp/minutes.tsv"
+          done <"$tmp/runs.tsv"
+          total_min=$(awk -F'\t' '{ s += $2 } END { printf "%d", s / 60000 + 0.5 }' "$tmp/minutes.tsv")
+          by_wf=$(awk -F'\t' '{ s[$1] += $2; n[$1]++ } END { for (k in s) printf "| %s | %d | %d |\n", k, n[k], s[k] / 60000 + 0.5 }' "$tmp/minutes.tsv" | sort -t'|' -k4 -nr)
+
+          # Claude spend from transcript artifacts.
+          gh api "repos/$R/actions/artifacts?per_page=100" --paginate \
+            --jq ".artifacts[] | select(.name | startswith(\"transcript-\")) | select(.expired | not) | select(.created_at >= \"$since\") | [.id, .name] | @tsv" >"$tmp/arts.tsv"
+          : >"$tmp/cost.tsv"
+          while IFS=$'\t' read -r id name; do
+            kind=$(cut -d- -f2 <<<"$name")
+            gh api "repos/$R/actions/artifacts/$id/zip" >"$tmp/a.zip" 2>/dev/null || continue
+            c=$(unzip -p "$tmp/a.zip" | jq -s '[.[] | .[]? | select(.type == "result") | .total_cost_usd // 0] | add // 0' 2>/dev/null || echo 0)
+            printf '%s\t%s\n' "$kind" "$c" >>"$tmp/cost.tsv"
+          done <"$tmp/arts.tsv"
+          total_cost=$(awk -F'\t' '{ s += $2 } END { printf "%.2f", s }' "$tmp/cost.tsv")
+          by_kind=$(awk -F'\t' '{ s[$1] += $2; n[$1]++ } END { for (k in s) printf "| %s | %d | $%.2f |\n", k, n[k], s[k] }' "$tmp/cost.tsv" | sort)
+
+          pct=$(( total_min * 100 / MIN_BUDGET ))
+          warn=""
+          [[ $pct -ge 80 ]] && warn="⚠️ **Actions minutes at ${pct}% of budget.** "
+          if awk -v c="$total_cost" -v b="$COST_BUDGET" 'BEGIN { exit !(b > 0 && c >= 0.8 * b) }'; then
+            warn="${warn}⚠️ **Claude spend at \$$total_cost of \$$COST_BUDGET.**"
+          fi
+          [[ -n "$warn" ]] && echo "::warning::$warn"
+
+          body="$tmp/body.md"
+          {
+            echo "_Updated $(date -u +%F\ %H:%MZ) · window: last $DAYS days · [run]($GITHUB_SERVER_URL/$R/actions/runs/$GITHUB_RUN_ID)_"
+            echo
+            [[ -n "$warn" ]] && { echo "$warn"; echo; }
+            echo "## GitHub Actions: **$total_min** billable min (${pct}% of $MIN_BUDGET)"
+            echo "_This repo only — the Free-plan quota is shared by all private repos of the account._"
+            echo
+            echo "| Workflow | Runs | Minutes |"; echo "|---|---:|---:|"; echo "$by_wf"
+            echo
+            echo "## Claude API: **\$$total_cost**$( [[ "$COST_BUDGET" != 0 ]] && echo " of \$$COST_BUDGET budget")"
+            echo "_From transcript artifacts still retained (30 days)._"
+            echo
+            echo "| Agent | Runs | Cost |"; echo "|---|---:|---:|"; echo "$by_kind"
+          } >"$body"
+          cat "$body" >>"$GITHUB_STEP_SUMMARY"
+
+          gh label create "$LABEL" --repo "$R" --color 1d76db >/dev/null 2>&1 || true
+          num=$(gh issue list --repo "$R" --label "$LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [[ -n "$num" ]]; then
+            gh issue edit "$num" --repo "$R" --body-file "$body" >/dev/null
+          else
+            gh issue create --repo "$R" --title "Agent pipeline usage" --label "$LABEL" --body-file "$body" >/dev/null
+          fi

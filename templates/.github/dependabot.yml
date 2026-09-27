@@ -1,0 +1,23 @@
+# Dependabot security + version updates are free on private repos.
+# Replace/extend the ecosystems for your project. PRs target develop and carry no
+# `agent` label, so the merge gate leaves them for a human.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm   # npm | pip | gomod | cargo | maven | gradle | composer | ...
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+    open-pull-requests-limit: 5

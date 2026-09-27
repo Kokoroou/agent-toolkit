@@ -1,0 +1,34 @@
+# The toolkit's own CI: manifests, workflows, caller templates and scripts.
+name: self-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install tools
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+          echo "$PWD" >>"$GITHUB_PATH"
+      - run: scripts/lint.sh
+      - name: Bootstrap into a scratch repo
+        run: |
+          d=$(mktemp -d) && git -C "$d" init -q
+          scripts/bootstrap.sh "$d" --ref v1 --no-labels
+          ! grep -rn "agent-toolkit/.github/workflows/.*@main" "$d/.github/workflows"
