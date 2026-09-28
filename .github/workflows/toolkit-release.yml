@@ -29,13 +29,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.release.outputs.tag-name }}
+          persist-credentials: false
       - name: Move major tag
         env:
           TAG: ${{ needs.release.outputs.tag-name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           major="${TAG%%.*}"
           git tag -f "$major" "$TAG"
-          git push -f origin "refs/tags/$major"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$major"

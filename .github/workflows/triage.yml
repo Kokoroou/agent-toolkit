@@ -47,6 +47,12 @@ on:
         description: Largest size (XS|S|M|L) that is auto-implemented; bigger issues wait for a human.
         type: string
         default: M
+      auto-implement-trusted-only:
+        description: >-
+          Only auto-implement issues opened by the repo's OWNER / MEMBER / COLLABORATOR, so an
+          outsider's issue on a public repo cannot start the write-enabled build agent.
+        type: boolean
+        default: true
       toolkit-marketplace:
         description: Git URL of the plugin marketplace to install the pipeline plugin from.
         type: string
@@ -98,7 +104,7 @@ jobs:
       MARKER_Q: "<!-- agent-toolkit:triage-question -->"
       MARKER_S: "<!-- agent-toolkit:triage-summary -->"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -247,12 +253,18 @@ jobs:
           RISK: ${{ steps.apply.outputs.risk }}
           SIZE: ${{ steps.apply.outputs.size }}
           MAX_SIZE: ${{ inputs.auto-implement-max-size }}
+          TRUSTED_ONLY: ${{ inputs.auto-implement-trusted-only }}
         run: |
           set -euo pipefail
           order=(XS S M L XL)
           idx() { local i; for i in "${!order[@]}"; do [[ "${order[$i]}" == "$1" ]] && echo "$i" && return; done; echo 99; }
           if [[ "$RISK" == high || $(idx "$SIZE") -gt $(idx "$MAX_SIZE") ]]; then
             echo "Not auto-implementing (risk=$RISK, size=$SIZE > $MAX_SIZE); a human can add label agent:implement."
+            exit 0
+          fi
+          assoc=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .author_association)
+          if [[ "$TRUSTED_ONLY" == true && ! " OWNER MEMBER COLLABORATOR " == *" $assoc "* ]]; then
+            echo "Not auto-implementing: author is $assoc, not a collaborator; a human can add label agent:implement."
             exit 0
           fi
           gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" -f issue="$ISSUE"
@@ -269,7 +281,7 @@ jobs:
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: transcript-triage-${{ inputs.issue-number }}-${{ github.run_attempt }}
           path: ${{ steps.claude.outputs.execution_file }}

@@ -1,4 +1,5 @@
-# The toolkit's own CI: manifests, workflows, caller templates and scripts.
+# The toolkit's own CI: manifests, workflows, caller templates and scripts, plus
+# security scans of the toolkit itself.
 name: self-test
 
 on:
@@ -10,21 +11,27 @@ on:
 permissions:
   contents: read
 
+env:
+  ACTIONLINT_VERSION: 1.7.12
+  ZIZMOR_VERSION: 1.30.1
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
       - name: Install tools
         run: |
+          set -euo pipefail
           npm install -g @anthropic-ai/claude-code
-          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+          # Download script from the release tag (not a moving branch).
+          bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION"
           echo "$PWD" >>"$GITHUB_PATH"
       - run: scripts/lint.sh
       - name: Bootstrap into a scratch repo
@@ -32,3 +39,32 @@ jobs:
           d=$(mktemp -d) && git -C "$d" init -q
           scripts/bootstrap.sh "$d" --ref v1 --no-labels
           ! grep -rn "agent-toolkit/.github/workflows/.*@main" "$d/.github/workflows"
+
+  # Static security audit of the workflows (template injection, excessive permissions,
+  # credential persistence, unpinned actions, …). Report-only: findings show up as
+  # annotations on the run; see docs/SECURITY.md before making it blocking.
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pipx run "zizmor==$ZIZMOR_VERSION" --format github \
+            .github/workflows templates/.github/workflows \
+            || echo "::warning::zizmor reported findings (report-only) — see the annotations."
+
+  # Dogfood the reusable quality gate: Gitleaks (secrets in history) + Semgrep.
+  security:
+    uses: ./.github/workflows/quality.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    with:
+      enable-pr-title-check: false
+      baseline-branch: main

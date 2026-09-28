@@ -61,7 +61,7 @@ preset() {
       cov="$jest_cov --coverageReporters=json-summary >&2 && node -e \"console.log(require('./coverage/coverage-summary.json').total.lines.pct)\""
       test="$pm test"; build="$pm run build"
       tools="\"Bash(corepack enable),Bash($pm install:*),Bash($pm run:*),Bash($pm test:*),Bash($x:*)\""
-      smoke="$pm run build && $pm test -- --testPathPattern=smoke"
+      smoke="$pm run build && $pm test -- smoke"
       eco=npm rtype=node
       printf '%s\t%s\t%s\n' "$md" "- Coverage:" "\`$jest_cov\`" ;;
     python)

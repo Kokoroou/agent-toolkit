@@ -98,10 +98,17 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: write
+          permission-checks: read
+          permission-statuses: read
 
       - name: Decide and merge
         id: decide
@@ -206,11 +213,32 @@ jobs:
           fi
           finish merged "PR #$pr → $BASE ($merge_sha)"
 
+  # The smoke test runs the freshly merged (agent-written) code, so it gets a read-only
+  # token and no App token; the revert runs in a separate job on a clean runner, so
+  # nothing the smoke test wrote ($GITHUB_ENV, $GITHUB_PATH, binaries) can reach it.
   smoke:
     needs: gate
     if: needs.gate.outputs.action == 'merged' && inputs.smoke-command != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.gate.outputs.merge-sha }}
+          persist-credentials: false
+      - name: Setup
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }}
+      - name: Smoke test
+        run: ${{ inputs.smoke-command }}
+
+  revert:
+    needs: [gate, smoke]
+    if: always() && needs.gate.outputs.action == 'merged' && needs.smoke.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
@@ -221,23 +249,20 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
-      - uses: actions/checkout@v4
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.merge-sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Setup
-        if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }}
-      - name: Smoke test
-        id: smoke
-        run: ${{ inputs.smoke-command }}
       - name: Open revert PR
-        if: failure() && steps.smoke.outcome == 'failure'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           MERGE_SHA: ${{ needs.gate.outputs.merge-sha }}

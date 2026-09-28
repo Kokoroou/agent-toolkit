@@ -29,7 +29,7 @@ jobs:
       required-statuses: agent/review
       # ── edit for your stack ───────────────────────────────────────────────
       setup-command: npm ci
-      smoke-command: npm run build && npm test -- --testPathPattern=smoke
+      smoke-command: npm run build && npm test -- smoke
       ci-dispatch-workflow: ci.yml
     secrets: inherit
 

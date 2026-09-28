@@ -84,6 +84,13 @@ on:
           but agent pushes/PRs are made by a bot). "*" is fine for private repos.
         type: string
         default: "*"
+      allow-workflow-changes:
+        description: >-
+          Let the agent push changes to .github/workflows/ (asks the GitHub App token for the
+          Workflows permission, which the App must have). Off by default: a prompt-injected
+          agent should not be able to rewrite CI.
+        type: boolean
+        default: false
     secrets:
       anthropic_api_key:
         required: false
@@ -127,10 +134,16 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: write
+          permission-workflows: ${{ inputs.allow-workflow-changes && 'write' || '' }}
 
       - name: Resolve context and circuit breaker
         id: ctx
@@ -182,7 +195,7 @@ jobs:
           echo "branch=$branch" >>"$GITHUB_OUTPUT"
           echo "issue=$ISSUE" >>"$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: steps.ctx.outputs.skip != 'true'
         with:
           ref: ${{ inputs.mode == 'fix' && steps.ctx.outputs.branch || inputs.base-branch }}
@@ -355,7 +368,7 @@ jobs:
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: transcript-${{ inputs.mode }}-${{ inputs.mode == 'fix' && inputs.pr-number || inputs.issue-number }}-${{ github.run_attempt }}
           path: ${{ steps.claude.outputs.execution_file }}

@@ -44,6 +44,10 @@ on:
       semgrep-config:
         type: string
         default: p/default
+      semgrep-version:
+        description: Semgrep version to install (e.g. "1.140.0"). Empty = latest.
+        type: string
+        default: ""
       enable-pr-title-check:
         type: boolean
         default: true
@@ -80,10 +84,8 @@ jobs:
     permissions:
       contents: read
       actions: read
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -120,7 +122,7 @@ jobs:
 
       - name: Record coverage baseline
         if: inputs.coverage-command != '' && github.ref == format('refs/heads/{0}', inputs.baseline-branch)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-baseline
           path: coverage-baseline/coverage.txt
@@ -129,6 +131,8 @@ jobs:
       - name: Coverage must not drop
         if: inputs.coverage-command != '' && github.ref != format('refs/heads/{0}', inputs.baseline-branch)
         env:
+          # Only this step gets the token: the project's own commands above run without it.
+          GH_TOKEN: ${{ github.token }}
           PCT: ${{ steps.cov.outputs.pct }}
           BASELINE: ${{ inputs.baseline-branch }}
           TOL: ${{ inputs.coverage-tolerance }}
@@ -157,11 +161,11 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_LICENSE: ${{ secrets.gitleaks_license }}
@@ -171,14 +175,19 @@ jobs:
     if: inputs.enable-security
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: semgrep/semgrep
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
+      # Installed with pipx on the runner instead of the semgrep/semgrep (Alpine) container:
+      # JavaScript actions then run on the runner's own Node 24.
+      - name: Install Semgrep
+        env:
+          VERSION: ${{ inputs.semgrep-version }}
+        run: pipx install "semgrep${VERSION:+==$VERSION}"
       - name: Semgrep (new findings only)
         env:
           CONFIG: ${{ inputs.semgrep-config }}
@@ -186,14 +195,13 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -eu
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           args="--config $CONFIG --error --metrics off --sarif-output=semgrep.sarif"
           if [ "$REF" != "refs/heads/$BASELINE" ] && git rev-parse --verify -q "origin/$BASELINE" >/dev/null; then
             args="$args --baseline-commit $(git merge-base "origin/$BASELINE" HEAD)"
           fi
           # shellcheck disable=SC2086
           semgrep scan $args || { echo "::error::Semgrep found new issues — see the semgrep-results artifact."; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: semgrep-results

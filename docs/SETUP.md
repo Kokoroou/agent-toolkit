@@ -8,4 +8,5 @@ Hướng dẫn cài đặt được tách theo người đọc:
 | Người thêm pipeline vào một dự án | [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) | Bootstrap, sửa workflow theo stack (Node/Python/Go), `CLAUDE.md`, secrets, Settings, default branch, kiểm tra, Projects/Dependabot/ci-doctor/release, ghim & nâng cấp phiên bản, xử lý sự cố |
 | Người bảo trì repo `kokoroou/agent-toolkit` | [MAINTAINING.md](MAINTAINING.md) | Thiết lập repo toolkit, lint, quy trình thay đổi, thử trên sandbox, phát hành, breaking change |
 
-Thiết kế và luồng chi tiết: [ARCHITECTURE.md](ARCHITECTURE.md).
+Thiết kế và luồng chi tiết: [ARCHITECTURE.md](ARCHITECTURE.md). Đánh giá bảo mật và các
+công cụ quét: [SECURITY.md](SECURITY.md).

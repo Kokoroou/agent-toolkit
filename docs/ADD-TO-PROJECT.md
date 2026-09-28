@@ -355,7 +355,8 @@ nhiều repo.
 1. **Settings → Actions → General**
    - *Actions permissions*: cho phép actions và reusable workflows (mặc định *Allow all
      actions* là được; nếu giới hạn, thêm `kokoroou/agent-toolkit/*`, `anthropics/*`,
-     `actions/*`, `googleapis/release-please-action@*`).
+     `actions/*`, `googleapis/release-please-action@*`, `gitleaks/gitleaks-action@*`,
+     `oven-sh/setup-bun@*` — cái cuối do `anthropics/claude-code-action` gọi).
    - *Workflow permissions*: **Read and write permissions** và tick **Allow GitHub
      Actions to create and approve pull requests**. Thiếu bước này agent không mở được
      PR và release-please không mở được release PR.
