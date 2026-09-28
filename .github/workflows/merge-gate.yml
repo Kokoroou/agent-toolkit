@@ -230,9 +230,13 @@ jobs:
           persist-credentials: false
       - name: Setup
         if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          SETUP_COMMAND: ${{ inputs.setup-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$SETUP_COMMAND"
       - name: Smoke test
-        run: ${{ inputs.smoke-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          SMOKE_COMMAND: ${{ inputs.smoke-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$SMOKE_COMMAND"
 
   revert:
     needs: [gate, smoke]

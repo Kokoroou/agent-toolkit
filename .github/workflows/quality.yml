@@ -91,19 +91,27 @@ jobs:
 
       - name: Setup
         if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          SETUP_COMMAND: ${{ inputs.setup-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$SETUP_COMMAND"
 
       - name: Lint
         if: inputs.lint-command != ''
-        run: ${{ inputs.lint-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          LINT_COMMAND: ${{ inputs.lint-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$LINT_COMMAND"
 
       - name: Format check
         if: inputs.format-check-command != ''
-        run: ${{ inputs.format-check-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          FORMAT_CHECK_COMMAND: ${{ inputs.format-check-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$FORMAT_CHECK_COMMAND"
 
       - name: Test
         if: inputs.test-command != ''
-        run: ${{ inputs.test-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$TEST_COMMAND"
 
       - name: Coverage
         id: cov

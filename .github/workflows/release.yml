@@ -98,9 +98,13 @@ jobs:
           persist-credentials: false
       - name: Setup
         if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          SETUP_COMMAND: ${{ inputs.setup-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$SETUP_COMMAND"
       - name: Build
-        run: ${{ inputs.build-command }} # zizmor: ignore[template-injection] caller-owned command
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$BUILD_COMMAND"
       - name: Upload artifacts to the release
         if: inputs.artifact-paths != ''
         env:
