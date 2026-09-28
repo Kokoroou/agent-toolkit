@@ -31,7 +31,8 @@ Mục lục:
 | `.claude-plugin/marketplace.json`, `plugins/pipeline/` | Marketplace + plugin Claude Code (agents, commands, skill) | Workflow agent cài qua `toolkit-marketplace`; người dùng cài tay |
 | `templates/` | File bootstrap chép vào dự án (caller workflow, issue/PR template, nhãn, `CLAUDE.md`) | `scripts/bootstrap.sh` |
 | `workflows/ci-doctor.md` | Workflow gh-aw | `gh aw add kokoroou/agent-toolkit/ci-doctor` |
-| `scripts/bootstrap.sh`, `scripts/lint.sh` | Cài vào dự án; kiểm tra toolkit | Người dùng; CI + bạn |
+| `scripts/install.sh`, `scripts/install.ps1` | Cài một lệnh: công cụ, bootstrap, secret, settings, commit (bản `.ps1` chỉ cài git/gh rồi chạy `install.sh` bằng Git Bash) | Người dùng, qua `curl …/main/scripts/install.sh \| bash` |
+| `scripts/bootstrap.sh`, `scripts/lint.sh` | Chép template + preset `--stack`, nhãn, `develop`; kiểm tra toolkit | `install.sh` / người dùng; CI + bạn |
 | `release-please-config.json`, `.release-please-manifest.json`, `version.txt`, `CHANGELOG.md` | Cấu hình và trạng thái phát hành | release-please |
 | `docs/` | Tài liệu | |
 
@@ -85,9 +86,12 @@ scripts/lint.sh
 1. Mọi file JSON hợp lệ.
 2. `claude plugin validate --strict` cho plugin và marketplace.
 3. `actionlint` cho `.github/workflows/*.yml` (kèm shellcheck cho script nhúng).
-4. Caller template: thay `kokoroou/agent-toolkit/...@ref` bằng đường dẫn local rồi
-   actionlint lại — bắt lỗi thiếu/sai input hoặc secret giữa caller và reusable workflow.
-5. `shellcheck scripts/*.sh`.
+4. Caller template: bootstrap với từng `--stack` (node, pnpm, yarn, python, go), thay
+   `kokoroou/agent-toolkit/...@ref` bằng đường dẫn local rồi actionlint lại — bắt lỗi
+   thiếu/sai input hoặc secret giữa caller và reusable workflow, và YAML hỏng do preset.
+5. `templates/.github/labels.json` giữ mỗi nhãn trên một dòng (bootstrap đọc bằng `sed`,
+   không cần `jq` trên máy người dùng).
+6. `shellcheck scripts/*.sh`.
 
 `self-test.yml` chạy đúng script này trên mọi PR và push `main`, thêm một lần bootstrap
 vào repo tạm để chắc chắn không còn `@main` sau khi ghim `--ref`.
@@ -190,6 +194,12 @@ trong commit body):
 Không breaking: thêm input tuỳ chọn có default giữ hành vi cũ, sửa prompt/agent mà không
 đổi định dạng đầu ra, sửa lỗi.
 
+`scripts/install.sh` / `install.ps1` được người dùng tải thẳng từ `main` (không theo tag),
+còn template và `bootstrap.sh` được clone theo `--ref` của họ (mặc định `v0`). Vì vậy
+`install.sh` trên `main` phải chạy được với `bootstrap.sh` của mọi tag còn được ghim:
+dùng tuỳ chọn mới của bootstrap chỉ sau khi kiểm tra nó có (như cách `--stack` được dò
+bằng `grep`), và đừng đổi tên tham số/biến môi trường đã công bố.
+
 Plugin được cài từ `toolkit-marketplace` (mặc định nhánh mặc định, tức `main`), **không**
 theo tag mà dự án ghim. Vì vậy thay đổi plugin phải tương thích ngược với các reusable
 workflow của mọi tag major còn được dùng, hoặc dự án phải ghim `#vX` cho marketplace.
@@ -204,7 +214,9 @@ workflow của mọi tag major còn được dùng, hoặc dự án phải ghim 
   mới; kiểm tra khi Anthropic đổi alias.
 - **ci-doctor**: so với upstream `githubnext/agentics` khi gh-aw có thay đổi lớn.
 - **Tài liệu**: khi thêm input/nhãn/workflow, cập nhật [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md),
-  [ARCHITECTURE.md](ARCHITECTURE.md), README và thông báo cuối của `bootstrap.sh`.
+  [ARCHITECTURE.md](ARCHITECTURE.md), README và thông báo cuối của `bootstrap.sh`. Secret
+  hoặc setting mới mà dự án cần thì thêm luôn vào `scripts/install.sh`; lệnh stack mới thì
+  thêm vào `preset()` trong `bootstrap.sh` và ví dụ §3.3 của ADD-TO-PROJECT.
 
 ## 9. Có nên cài pipeline cho chính toolkit?
 

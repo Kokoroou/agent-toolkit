@@ -1,13 +1,15 @@
 # Thêm agent-toolkit vào một dự án
 
-Hướng dẫn từng bước để cài pipeline agent vào **một repo dự án** (mới hoặc đã có code).
-Làm lại toàn bộ tài liệu này cho mỗi repo.
+Hướng dẫn cài pipeline agent vào **một repo dự án** (mới hoặc đã có code). Cách nhanh
+nhất là **một lệnh** ở [mục Cài bằng một lệnh](#cài-bằng-một-lệnh); các mục 1–12 mô tả
+từng bước bên trong, để làm tay hoặc tinh chỉnh sau.
 
-> Lần đầu dùng toolkit? Làm [GETTING-STARTED.md](GETTING-STARTED.md) trước: cài `gh`,
-> lấy thông tin đăng nhập Claude, tạo GitHub App (một lần cho mọi dự án).
+> Lần đầu dùng toolkit? Làm [GETTING-STARTED.md](GETTING-STARTED.md) trước: lấy thông
+> tin đăng nhập Claude, tạo GitHub App (một lần cho mọi dự án).
 
 Mục lục:
 
+- [Cài bằng một lệnh](#cài-bằng-một-lệnh)
 0. [Checklist](#0-checklist)
 1. [Chuẩn bị repo](#1-chuẩn-bị-repo)
 2. [Chạy bootstrap](#2-chạy-bootstrap)
@@ -23,6 +25,104 @@ Mục lục:
 12. [Xử lý sự cố](#12-xử-lý-sự-cố)
 
 ---
+
+## Cài bằng một lệnh
+
+Đứng trong thư mục clone của repo dự án (repo đã có trên GitHub, có ít nhất một commit,
+bạn có quyền admin) rồi chạy:
+
+```bash
+# Linux, macOS, WSL, Git Bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
+```
+
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
+```
+
+Script (`scripts/install.sh`; bản Windows cài Git for Windows và GitHub CLI bằng `winget`
+nếu thiếu, rồi chạy chính script đó bằng Git Bash) làm lần lượt:
+
+| Bước | Làm gì | Tương ứng mục |
+|---|---|---|
+| 1 | Kiểm tra `git`, `gh` (đề nghị cài nếu thiếu) và `gh auth login` | GETTING-STARTED §3 |
+| 2 | Nhận diện stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go), chép template với lệnh đúng stack, tạo nhãn và branch `develop` | §2, §3 |
+| 3 | Đặt secret: token Claude, App ID + private key, `PROJECT_TOKEN` | §5 |
+| 4 | Bật *Workflow permissions* (read/write + tạo PR), squash merge, xoá branch sau merge, Dependabot alerts | §6 |
+| 5 | Commit `.github/` + `CLAUDE.md`, push lên default branch và `develop`, đặt `develop` làm default branch | §7, §8 |
+
+Chỉ những gì chưa có mới được hỏi: stack (Enter để nhận giá trị nhận diện), cách đăng
+nhập Claude và token (nhập ẩn; có thể để script chạy `claude setup-token`), App ID và
+đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
+branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
+
+**Không phải nhập lại cho dự án sau.** Cuối lần chạy đầu, script đề nghị nhớ câu trả lời:
+
+| Loại | Lưu ở đâu |
+|---|---|
+| Token (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `PROJECT_TOKEN`) | Kho khoá của hệ điều hành, mục `agent-toolkit`: **macOS Keychain**; **Linux** Secret Service (GNOME Keyring/KWallet, qua `secret-tool` — gói `libsecret-tools`, cần phiên desktop); **Windows** file `~/.config/agent-toolkit/<TÊN>.dpapi` mã hoá bằng DPAPI (chỉ tài khoản Windows của bạn trên máy đó giải mã được). Không có kho khoá (vd máy chủ không desktop, WSL) thì token **không được lưu** và sẽ được hỏi lại. |
+| App ID, đường dẫn file `.pem`, `--ref`, project owner | `~/.config/agent-toolkit/install.env` (quyền `600`, dạng `KEY=value`, không có bí mật) |
+
+Từ dự án thứ hai, lệnh ở trên gần như không hỏi gì. Một số lớp bảo vệ khác:
+
+- Token không bao giờ được ghi ra file thường hay truyền trên dòng lệnh (không lộ qua
+  `ps`); script đưa chúng vào `gh secret set` và kho khoá qua stdin.
+- `install.env` chỉ được đọc như dữ liệu (không `source`), chỉ nhận các khoá đã biết; dòng
+  chứa token bị bỏ qua kèm cảnh báo; file mà người dùng khác ghi được thì bị bỏ qua cả file.
+- Private key của App không được sao chép — chỉ lưu đường dẫn tới file `.pem` của bạn.
+  Nên để file này trong thư mục riêng (`chmod 600`), hoặc xoá sau khi đã cài xong mọi repo.
+- Kho khoá chống lộ qua backup, đồng bộ thư mục, commit nhầm hay người dùng khác trên máy,
+  nhưng **không** chống được mã độc chạy dưới chính tài khoản của bạn. Muốn chặt hơn: đặt
+  `AGENT_TOOLKIT_SECRET_STORE=none` và lấy token từ password manager mỗi lần chạy, ví dụ
+  `CLAUDE_CODE_OAUTH_TOKEN=$(op read op://Private/claude/token) bash install.sh`
+  (1Password; tương tự `bw get password …`, `pass show …`).
+- Xoá token đã lưu: macOS `security delete-generic-password -s agent-toolkit -a <TÊN>`;
+  Linux `secret-tool clear service agent-toolkit account <TÊN>`; Windows xoá file `.dpapi`.
+- Token Claude chỉ cần để đặt secret cho repo; nếu lộ, thu hồi ở
+  [Claude Console](https://platform.claude.com/settings/keys) (API key) hoặc tạo lại bằng
+  `claude setup-token`, rồi chạy lại script để cập nhật.
+
+`AGENT_TOOLKIT_CONFIG` trỏ tới file config khác nếu cần.
+
+**Chạy không hỏi (CI, script của bạn):** truyền giá trị bằng tham số hoặc biến môi
+trường và thêm `--yes`:
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN=...          # hoặc ANTHROPIC_API_KEY=...
+export AGENT_APP_ID=123456 AGENT_APP_PRIVATE_KEY_FILE=~/keys/my-agent.pem
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh \
+  | bash -s -- ~/code/my-project --stack python --yes
+```
+
+```powershell
+$env:CLAUDE_CODE_OAUTH_TOKEN = '...'
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) --stack python --yes
+```
+
+| Tham số | Biến môi trường | Ý nghĩa |
+|---|---|---|
+| `<path>` | | Repo dự án (mặc định: thư mục hiện tại) |
+| `--ref <ref>` | `AGENT_TOOLKIT_REF` | Phiên bản toolkit để ghim (mặc định `v0`, xem §10) |
+| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (mặc định), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (giữ lệnh Node mặc định để tự sửa) |
+| `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` hoặc `skip` |
+| | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Giá trị secret Claude |
+| `--app-id <id>` | `AGENT_APP_ID` | App ID của GitHub App |
+| `--app-key <file>` | `AGENT_APP_PRIVATE_KEY_FILE` (hoặc nội dung: `AGENT_APP_PRIVATE_KEY`) | Private key `.pem` |
+| `--project-owner`, `--project-number` | `PROJECT_OWNER`, `PROJECT_NUMBER`, `PROJECT_TOKEN` | GitHub Projects (§9.1) |
+| `--default-develop` / `--keep-default` | | Đổi / giữ default branch (mặc định: hỏi, `--yes` → đổi) |
+| `--commit` / `--no-commit` | | Commit + push hay để bạn tự làm (mặc định: hỏi, `--yes` → commit) |
+| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Bỏ qua từng phần; `--force` ghi đè file đã có |
+| `-y`, `--yes` | | Không hỏi gì; secret thiếu thì bỏ qua và báo ở cuối |
+
+Giá trị truyền bằng tham số/biến môi trường luôn được ghi (kể cả khi secret đã có).
+Script chỉ commit khi checkout đang ở default branch và trùng với `origin`; nếu không, nó
+bỏ qua bước commit và nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
+gồm **điền `CLAUDE.md`** (§4), **kiểm tra lệnh theo stack** (§3) và **thử một issue nhỏ**
+(§8). Chạy lại script an toàn: file đã có được giữ, nhãn được cập nhật.
+
+Cần xem trước hoặc sửa script? Clone toolkit rồi chạy `scripts/install.sh` (hoặc
+`scripts/install.ps1`) từ bản clone; `--help` in đầy đủ tuỳ chọn.
 
 ## 0. Checklist
 
@@ -61,8 +161,12 @@ cd ~/code/my-project && gh auth status          # gh phải đăng nhập, có q
 /tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref v0
 ```
 
+`bootstrap.sh` chỉ lo phần file + nhãn + `develop`; [`install.sh`](#cài-bằng-một-lệnh)
+gọi nó rồi làm tiếp secret, settings và commit.
+
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
+| `--stack <s>` | Điền sẵn lệnh cho stack: `auto` (mặc định, nhận diện từ file trong repo), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Các giá trị giống ví dụ ở §3.3. |
 | `--ref <ref>` | Ghim mọi `uses: kokoroou/agent-toolkit/...@<ref>`. Khuyến nghị `v0` (tag di động của bản 0.x hiện tại; `v1` khi toolkit lên 1.0.0). `main` = luôn mới nhất, chỉ dùng cho sandbox. Mặc định: `main`. |
 | `--force` | Ghi đè file đã có trong repo dự án. |
 | `--no-labels` | Không tạo nhãn / branch `develop` (khi chưa có `gh` hoặc đã tạo rồi). |
@@ -85,7 +189,8 @@ cd ~/code/my-project && gh auth status          # gh phải đăng nhập, có q
    | `.github/dependabot.yml` | Cập nhật dependency, PR vào `develop` |
    | `CLAUDE.md` | Khung hướng dẫn dự án cho agent |
 
-2. Thay `@main` trong các dòng `uses:` bằng `--ref`.
+2. Thay `@main` trong các dòng `uses:` bằng `--ref`, điền lệnh theo `--stack` vào các
+   khối `edit for your stack`, `dependabot.yml`, `release.yml` và mục *Commands* của `CLAUDE.md`.
 3. Tạo ~24 nhãn (`needs-triage`, `agent`, `risk:high`, `size:M`…) — chạy lại an toàn.
 4. Tạo branch `develop` từ default branch nếu chưa có.
 
@@ -103,8 +208,9 @@ Bootstrap in danh sách `Kept existing`. Với từng file:
 
 ## 3. Sửa workflow cho stack của dự án
 
-Template mặc định cho **Node + Jest + Prettier + ESLint**. Tìm các khối
-`# ── edit for your stack ──` và sửa.
+Template mặc định cho **Node + Jest + Prettier + ESLint**; `--stack` của bootstrap/install
+đã điền sẵn lệnh cho pnpm, yarn, Python (pytest + ruff) và Go. Vẫn nên kiểm tra các khối
+`# ── edit for your stack ──` và sửa cho khớp dự án (ví dụ dự án Python không dùng ruff).
 
 ### 3.1 `ci.yml`
 
