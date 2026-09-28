@@ -150,11 +150,19 @@ repo của bạn.
 
 Chỉ cần nếu muốn triage tự thêm issue vào một GitHub Project (v2) và điền `Priority`,
 `Size`. Project thuộc **tài khoản cá nhân** không nhận `GITHUB_TOKEN` hay token của App,
-nên cần classic PAT:
+nên cần **classic** PAT:
 
-1. **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
-2. Note: `agent-toolkit projects`; Expiration: tuỳ bạn (nhớ gia hạn); scopes: **`repo`** và **`project`**.
-3. Copy token → sẽ dùng làm secret `PROJECT_TOKEN`.
+1. Mở thẳng <https://github.com/settings/tokens/new?scopes=repo,project&description=agent-toolkit%20projects>
+   (link này điền sẵn Note và tick sẵn scope), hoặc vào
+   **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → Generate new token (classic)**.
+2. Kiểm tra lại: Note `agent-toolkit projects`; Expiration tuỳ bạn (nhớ gia hạn); scopes **`repo`** và **`project`**.
+3. **Generate token** → copy token → sẽ dùng làm secret `PROJECT_TOKEN`.
+
+> **Đừng dùng fine-grained token.** Nếu trang bạn đang mở có các mục *Repository access*
+> và *Permissions → Add permissions* thì đó là trang fine-grained. Loại token này chưa có
+> quyền ghi vào Project của tài khoản cá nhân, nên triage sẽ không thêm được issue vào
+> Project. Trang classic chỉ có một danh sách checkbox scope (`repo`, `workflow`,
+> `project`, ...).
 
 ## 7. Dùng plugin khi làm việc tay (tuỳ chọn)
 
