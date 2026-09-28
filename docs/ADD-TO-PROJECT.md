@@ -68,8 +68,10 @@ you), the App ID and `.pem` path (it guesses the newest file in `~/Downloads`), 
 to commit / change the default branch. Secrets already in the repo are kept unless you
 agree to replace them.
 
-The script only commits when the checkout is on the default branch and matches `origin`;
-otherwise it skips the commit and tells you what to do. At the end it prints the remaining
+Run it with the default branch checked out (after the first run that is usually
+`develop`): on any other branch it stops before writing a file and tells you to switch, or
+pass `--no-commit` to commit yourself. If the local branch differs from `origin` it skips
+the commit and tells you what to do. At the end it prints the remaining
 tasks — always including **fill in `CLAUDE.md`** (§4), **check the stack commands** (§3)
 and **try a small issue** (§8). Re-running is safe: existing files are kept, labels are
 updated.

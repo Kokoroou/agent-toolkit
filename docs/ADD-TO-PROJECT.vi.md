@@ -67,8 +67,10 @@ nhập Claude và token (nhập ẩn; có thể để script chạy `claude setu
 đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
 branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
 
-Script chỉ commit khi checkout đang ở default branch và trùng với `origin`; nếu không, nó
-bỏ qua bước commit và nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
+Chạy script khi đang đứng ở default branch (sau lần chạy đầu thường là `develop`): ở branch
+khác, script dừng ngay trước khi ghi file và báo bạn cần chuyển branch, hoặc dùng
+`--no-commit` để tự commit. Nếu branch local khác `origin`, script bỏ qua bước commit và
+nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
 gồm **điền `CLAUDE.md`** (§4), **kiểm tra lệnh theo stack** (§3) và **thử một issue nhỏ**
 (§8). Chạy lại script an toàn: file đã có được giữ, nhãn được cập nhật.
 
