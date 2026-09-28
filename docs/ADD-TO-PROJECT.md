@@ -1,35 +1,45 @@
-# Thêm agent-toolkit vào một dự án
+# Add agent-toolkit to a project
 
-Hướng dẫn cài pipeline agent vào **một repo dự án** (mới hoặc đã có code). Cách nhanh
-nhất là **một lệnh** ở [mục Cài bằng một lệnh](#cài-bằng-một-lệnh); các mục 1–12 mô tả
-từng bước bên trong, để làm tay hoặc tinh chỉnh sau.
+**English** · [Tiếng Việt](ADD-TO-PROJECT.vi.md)
 
-> Lần đầu dùng toolkit? Làm [GETTING-STARTED.md](GETTING-STARTED.md) trước: lấy thông
-> tin đăng nhập Claude, tạo GitHub App (một lần cho mọi dự án).
+How to install the agent pipeline into **one project repo** (new or with existing code).
 
-Mục lục:
+> First time using the toolkit? Do [GETTING-STARTED.md](GETTING-STARTED.md) first: get your
+> Claude credentials and create the GitHub App (once for all projects).
 
-- [Cài bằng một lệnh](#cài-bằng-một-lệnh)
+**Shortest path (~10 min + agent run time):**
+
+1. Run the [install command](#one-command-install) from your project's clone.
+2. Check the lint/test/coverage commands the script filled in for your stack → [§3](#3-adapt-the-workflows-to-your-stack).
+3. Fill in `CLAUDE.md` (commands, architecture, what not to touch) → [§4](#4-write-claudemd).
+4. Open a small issue and watch it go through the whole loop → [§8](#8-commit-and-verify).
+
+Sections 1–9 describe each step the installer performs, for doing it by hand or tuning
+later. Sections 10–12 are for later: upgrades, day-to-day operation, troubleshooting.
+
+Contents:
+
+- [One-command install](#one-command-install)
 0. [Checklist](#0-checklist)
-1. [Chuẩn bị repo](#1-chuẩn-bị-repo)
-2. [Chạy bootstrap](#2-chạy-bootstrap)
-3. [Sửa workflow cho stack của dự án](#3-sửa-workflow-cho-stack-của-dự-án)
-4. [Viết `CLAUDE.md`](#4-viết-claudemd)
-5. [Thêm secrets](#5-thêm-secrets)
-6. [Cấu hình Settings của repo](#6-cấu-hình-settings-của-repo)
-7. [Chọn default branch](#7-chọn-default-branch)
-8. [Commit và kiểm tra](#8-commit-và-kiểm-tra)
-9. [Tuỳ chọn: Projects, Dependabot, ci-doctor, release](#9-tuỳ-chọn)
-10. [Ghim và nâng cấp phiên bản toolkit](#10-ghim-và-nâng-cấp-phiên-bản-toolkit)
-11. [Vận hành hằng ngày](#11-vận-hành-hằng-ngày)
-12. [Xử lý sự cố](#12-xử-lý-sự-cố)
+1. [Prepare the repo](#1-prepare-the-repo)
+2. [Run bootstrap](#2-run-bootstrap) *(manual install)*
+3. [Adapt the workflows to your stack](#3-adapt-the-workflows-to-your-stack)
+4. [Write `CLAUDE.md`](#4-write-claudemd)
+5. [Add secrets](#5-add-secrets) *(manual install)*
+6. [Configure repo Settings](#6-configure-repo-settings) *(manual install)*
+7. [Choose the default branch](#7-choose-the-default-branch)
+8. [Commit and verify](#8-commit-and-verify)
+9. [Optional: Projects, Dependabot, ci-doctor, release](#9-optional)
+10. [Pin and upgrade the toolkit version](#10-pin-and-upgrade-the-toolkit-version)
+11. [Day-to-day operation](#11-day-to-day-operation)
+12. [Troubleshooting](#12-troubleshooting)
 
 ---
 
-## Cài bằng một lệnh
+## One-command install
 
-Đứng trong thư mục clone của repo dự án (repo đã có trên GitHub, có ít nhất một commit,
-bạn có quyền admin) rồi chạy:
+Prerequisites: the repo exists on GitHub, has at least one commit, and you are an admin.
+From your project's clone, run:
 
 ```bash
 # Linux, macOS, WSL, Git Bash
@@ -41,55 +51,76 @@ curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts
 irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
 ```
 
-Script (`scripts/install.sh`; bản Windows cài Git for Windows và GitHub CLI bằng `winget`
-nếu thiếu, rồi chạy chính script đó bằng Git Bash) làm lần lượt:
+The script (`scripts/install.sh`; the Windows version installs Git for Windows and GitHub
+CLI with `winget` if missing, then runs that same script under Git Bash) does, in order:
 
-| Bước | Làm gì | Tương ứng mục |
+| Step | What it does | Matching section |
 |---|---|---|
-| 1 | Kiểm tra `git`, `gh` (đề nghị cài nếu thiếu) và `gh auth login` | GETTING-STARTED §3 |
-| 2 | Nhận diện stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go), chép template với lệnh đúng stack, tạo nhãn và branch `develop` | §2, §3 |
-| 3 | Đặt secret: token Claude, App ID + private key, `PROJECT_TOKEN` | §5 |
-| 4 | Bật *Workflow permissions* (read/write + tạo PR), squash merge, xoá branch sau merge, Dependabot alerts | §6 |
-| 5 | Commit `.github/` + `CLAUDE.md`, push lên default branch và `develop`, đặt `develop` làm default branch | §7, §8 |
+| 1 | Checks `git`, `gh` (offers to install if missing) and `gh auth login` | GETTING-STARTED §3 |
+| 2 | Detects the stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go), copies the templates with the right commands, creates labels and the `develop` branch | §2, §3 |
+| 3 | Sets secrets: Claude token, App ID + private key, `PROJECT_TOKEN` | §5 |
+| 4 | Enables *Workflow permissions* (read/write + create PRs), squash merge, delete branch after merge, Dependabot alerts | §6 |
+| 5 | Commits `.github/` + `CLAUDE.md`, pushes to the default branch and `develop`, makes `develop` the default branch | §7, §8 |
 
-Chỉ những gì chưa có mới được hỏi: stack (Enter để nhận giá trị nhận diện), cách đăng
-nhập Claude và token (nhập ẩn; có thể để script chạy `claude setup-token`), App ID và
-đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
-branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
+It only asks for what is missing: the stack (Enter accepts the detected value), how to
+sign in to Claude and the token (hidden input; the script can run `claude setup-token` for
+you), the App ID and `.pem` path (it guesses the newest file in `~/Downloads`), and whether
+to commit / change the default branch. Secrets already in the repo are kept unless you
+agree to replace them.
 
-**Không phải nhập lại cho dự án sau.** Cuối lần chạy đầu, script đề nghị nhớ câu trả lời:
+The script only commits when the checkout is on the default branch and matches `origin`;
+otherwise it skips the commit and tells you what to do. At the end it prints the remaining
+tasks — always including **fill in `CLAUDE.md`** (§4), **check the stack commands** (§3)
+and **try a small issue** (§8). Re-running is safe: existing files are kept, labels are
+updated.
 
-| Loại | Lưu ở đâu |
+Want to review or modify the script first? Clone the toolkit and run `scripts/install.sh`
+(or `scripts/install.ps1`) from the clone; `--help` prints every option.
+
+<details>
+<summary><b>How the script remembers answers — later projects need almost no input</b></summary>
+
+At the end of the first run the script offers to remember your answers:
+
+| Kind | Stored in |
 |---|---|
-| Token (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `PROJECT_TOKEN`) | Kho khoá của hệ điều hành, mục `agent-toolkit`: **macOS Keychain**; **Linux** Secret Service (GNOME Keyring/KWallet, qua `secret-tool` — gói `libsecret-tools`, cần phiên desktop); **Windows** file `~/.config/agent-toolkit/<TÊN>.dpapi` mã hoá bằng DPAPI (chỉ tài khoản Windows của bạn trên máy đó giải mã được). Không có kho khoá (vd máy chủ không desktop, WSL) thì token **không được lưu** và sẽ được hỏi lại. |
-| App ID, đường dẫn file `.pem`, `--ref`, project owner | `~/.config/agent-toolkit/install.env` (quyền `600`, dạng `KEY=value`, không có bí mật) |
+| Tokens (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `PROJECT_TOKEN`) | The OS keychain, entry `agent-toolkit`: **macOS Keychain**; **Linux** Secret Service (GNOME Keyring/KWallet, via `secret-tool` — package `libsecret-tools`, needs a desktop session); **Windows** file `~/.config/agent-toolkit/<NAME>.dpapi` encrypted with DPAPI (only your Windows account on that machine can decrypt it). Without a keychain (e.g. headless servers, WSL) tokens are **not stored** and are asked again. |
+| App ID, `.pem` path, `--ref`, project owner | `~/.config/agent-toolkit/install.env` (mode `600`, `KEY=value`, no secrets) |
 
-Từ dự án thứ hai, lệnh ở trên gần như không hỏi gì. Một số lớp bảo vệ khác:
+From the second project on, the command above asks almost nothing. Other safeguards:
 
-- Token không bao giờ được ghi ra file thường hay truyền trên dòng lệnh (không lộ qua
-  `ps`); script đưa chúng vào `gh secret set` và kho khoá qua stdin.
-- `install.env` chỉ được đọc như dữ liệu (không `source`), chỉ nhận các khoá đã biết; dòng
-  chứa token bị bỏ qua kèm cảnh báo; file mà người dùng khác ghi được thì bị bỏ qua cả file.
-- Private key của App không được sao chép — chỉ lưu đường dẫn tới file `.pem` của bạn.
-  Nên để file này trong thư mục riêng (`chmod 600`), hoặc xoá sau khi đã cài xong mọi repo.
-- Kho khoá chống lộ qua backup, đồng bộ thư mục, commit nhầm hay người dùng khác trên máy,
-  nhưng **không** chống được mã độc chạy dưới chính tài khoản của bạn. Muốn chặt hơn: đặt
-  `AGENT_TOOLKIT_SECRET_STORE=none` và lấy token từ password manager mỗi lần chạy, ví dụ
+- Tokens are never written to plain files or passed on the command line (not visible via
+  `ps`); the script feeds them to `gh secret set` and the keychain over stdin.
+- `install.env` is read as data (never `source`d) and only accepts known keys; lines
+  containing tokens are ignored with a warning; a file writable by other users is ignored
+  entirely.
+- The App private key is not copied — only the path to your `.pem` file is stored. Keep
+  that file in a private directory (`chmod 600`), or delete it once every repo is set up.
+- The keychain protects against leaks via backups, folder sync, accidental commits or
+  other users on the machine, but **not** against malware running as your own account. For
+  stricter handling, set `AGENT_TOOLKIT_SECRET_STORE=none` and fetch tokens from a password
+  manager on each run, e.g.
   `CLAUDE_CODE_OAUTH_TOKEN=$(op read op://Private/claude/token) bash install.sh`
-  (1Password; tương tự `bw get password …`, `pass show …`).
-- Xoá token đã lưu: macOS `security delete-generic-password -s agent-toolkit -a <TÊN>`;
-  Linux `secret-tool clear service agent-toolkit account <TÊN>`; Windows xoá file `.dpapi`.
-- Token Claude chỉ cần để đặt secret cho repo; nếu lộ, thu hồi ở
-  [Claude Console](https://platform.claude.com/settings/keys) (API key) hoặc tạo lại bằng
-  `claude setup-token`, rồi chạy lại script để cập nhật.
+  (1Password; likewise `bw get password …`, `pass show …`).
+- Delete stored tokens: macOS `security delete-generic-password -s agent-toolkit -a <NAME>`;
+  Linux `secret-tool clear service agent-toolkit account <NAME>`; Windows delete the
+  `.dpapi` file.
+- The Claude token is only needed to set the repo secret; if it leaks, revoke it in the
+  [Claude Console](https://platform.claude.com/settings/keys) (API key) or regenerate it
+  with `claude setup-token`, then re-run the script to update it.
 
-`AGENT_TOOLKIT_CONFIG` trỏ tới file config khác nếu cần.
+`AGENT_TOOLKIT_CONFIG` points to a different config file if needed.
 
-**Chạy không hỏi (CI, script của bạn):** truyền giá trị bằng tham số hoặc biến môi
-trường và thêm `--yes`:
+</details>
+
+<details>
+<summary><b>Non-interactive runs (CI, your own scripts) and the option table</b></summary>
+
+Pass values as options or environment variables and add `--yes`. Values passed this way
+are always written, even if the secret already exists.
 
 ```bash
-export CLAUDE_CODE_OAUTH_TOKEN=...          # hoặc ANTHROPIC_API_KEY=...
+export CLAUDE_CODE_OAUTH_TOKEN=...          # or ANTHROPIC_API_KEY=...
 export AGENT_APP_ID=123456 AGENT_APP_PRIVATE_KEY_FILE=~/keys/my-agent.pem
 curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh \
   | bash -s -- ~/code/my-project --stack python --yes
@@ -100,159 +131,163 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) --stack python --yes
 ```
 
-| Tham số | Biến môi trường | Ý nghĩa |
+| Option | Environment variable | Meaning |
 |---|---|---|
-| `<path>` | | Repo dự án (mặc định: thư mục hiện tại) |
-| `--ref <ref>` | `AGENT_TOOLKIT_REF` | Phiên bản toolkit để ghim (mặc định `v0`, xem §10) |
-| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (mặc định), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (giữ lệnh Node mặc định để tự sửa) |
-| `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` hoặc `skip` |
-| | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Giá trị secret Claude |
-| `--app-id <id>` | `AGENT_APP_ID` | App ID của GitHub App |
-| `--app-key <file>` | `AGENT_APP_PRIVATE_KEY_FILE` (hoặc nội dung: `AGENT_APP_PRIVATE_KEY`) | Private key `.pem` |
+| `<path>` | | Project repo (default: current directory) |
+| `--ref <ref>` | `AGENT_TOOLKIT_REF` | Toolkit version to pin (default `v0`, see §10) |
+| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (default), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (keep the default Node commands to edit yourself) |
+| `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` or `skip` |
+| | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Claude secret value |
+| `--app-id <id>` | `AGENT_APP_ID` | GitHub App ID |
+| `--app-key <file>` | `AGENT_APP_PRIVATE_KEY_FILE` (or the content: `AGENT_APP_PRIVATE_KEY`) | `.pem` private key |
 | `--project-owner`, `--project-number` | `PROJECT_OWNER`, `PROJECT_NUMBER`, `PROJECT_TOKEN` | GitHub Projects (§9.1) |
-| `--default-develop` / `--keep-default` | | Đổi / giữ default branch (mặc định: hỏi, `--yes` → đổi) |
-| `--commit` / `--no-commit` | | Commit + push hay để bạn tự làm (mặc định: hỏi, `--yes` → commit) |
-| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Bỏ qua từng phần; `--force` ghi đè file đã có |
-| `-y`, `--yes` | | Không hỏi gì; secret thiếu thì bỏ qua và báo ở cuối |
+| `--default-develop` / `--keep-default` | | Change / keep the default branch (default: ask, `--yes` → change) |
+| `--commit` / `--no-commit` | | Commit + push, or leave it to you (default: ask, `--yes` → commit) |
+| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Skip each part; `--force` overwrites existing files |
+| `-y`, `--yes` | | Ask nothing; missing secrets are skipped and reported at the end |
 
-Giá trị truyền bằng tham số/biến môi trường luôn được ghi (kể cả khi secret đã có).
-Script chỉ commit khi checkout đang ở default branch và trùng với `origin`; nếu không, nó
-bỏ qua bước commit và nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
-gồm **điền `CLAUDE.md`** (§4), **kiểm tra lệnh theo stack** (§3) và **thử một issue nhỏ**
-(§8). Chạy lại script an toàn: file đã có được giữ, nhãn được cập nhật.
-
-Cần xem trước hoặc sửa script? Clone toolkit rồi chạy `scripts/install.sh` (hoặc
-`scripts/install.ps1`) từ bản clone; `--help` in đầy đủ tuỳ chọn.
+</details>
 
 ## 0. Checklist
 
-- [ ] Repo có ít nhất một commit, lint/test chạy được trên máy
-- [ ] `scripts/bootstrap.sh` đã chạy (file + nhãn + branch `develop`)
-- [ ] Các khối `edit for your stack` đã sửa trong `ci.yml`, `agent-implement.yml`, `agent-merge-gate.yml`
-- [ ] `CLAUDE.md` đã điền
-- [ ] Secret Claude (+ App) đã thêm
-- [ ] Workflow permissions: *Read and write* + *Allow GitHub Actions to create and approve pull requests*
-- [ ] Caller workflow nằm trên **default branch**
-- [ ] Thử một issue nhỏ đi hết vòng
+Items marked ⚙ are done automatically by the installer; for a manual install follow the
+matching section.
 
-## 1. Chuẩn bị repo
+- [ ] The repo has at least one commit; lint/test run locally (§1)
+- [ ] ⚙ Files + labels + `develop` branch exist (§2)
+- [ ] The `edit for your stack` blocks match the project in `ci.yml`, `agent-implement.yml`, `agent-merge-gate.yml` (§3)
+- [ ] `CLAUDE.md` is filled in (§4)
+- [ ] ⚙ Claude secret (+ App) added (§5)
+- [ ] ⚙ Workflow permissions: *Read and write* + *Allow GitHub Actions to create and approve pull requests* (§6)
+- [ ] ⚙ Caller workflows are on the **default branch** (§7)
+- [ ] A small issue went through the whole loop (§8)
 
-- Repo phải tồn tại trên GitHub và đã clone về máy. Với repo mới tinh:
+## 1. Prepare the repo
+
+- The repo must exist on GitHub and be cloned locally. For a brand-new repo:
 
   ```bash
   gh repo create my-project --private --clone && cd my-project
-  # tạo khung dự án, ít nhất một test chạy được, rồi:
+  # scaffold the project, at least one passing test, then:
   git add -A && git commit -m "chore: initial commit" && git push -u origin HEAD
   ```
 
-  Bootstrap tạo `develop` từ default branch nên repo cần có ít nhất một commit.
-- Dự án nên có sẵn lệnh **lint**, **format check**, **test**, và nếu được thì **coverage**.
-  Pipeline chỉ an toàn bằng bộ test của bạn: agent chỉ được merge khi CI xanh.
-- Nếu repo đã có `.github/workflows/ci.yml`, `CLAUDE.md`, issue template…: bootstrap
-  **giữ nguyên** file đã có (trừ khi dùng `--force`); bạn cần tự gộp nội dung (xem §2.3).
+  Bootstrap creates `develop` from the default branch, so the repo needs at least one commit.
+- The project should already have **lint**, **format check**, **test** and, if possible,
+  **coverage** commands. The pipeline is only as safe as your test suite: the agent can
+  only merge when CI is green.
+- If the repo already has `.github/workflows/ci.yml`, `CLAUDE.md`, issue templates…:
+  bootstrap **keeps** existing files (unless `--force`); you merge the content yourself
+  (see §2.3).
 
-## 2. Chạy bootstrap
+## 2. Run bootstrap
 
-### 2.1 Lệnh
+> Used the [install command](#one-command-install)? Skip this section — except §2.3 if the
+> repo already had `ci.yml`, `CLAUDE.md` or issue templates.
+
+### 2.1 Command
 
 ```bash
 git clone https://github.com/kokoroou/agent-toolkit /tmp/agent-toolkit
-cd ~/code/my-project && gh auth status          # gh phải đăng nhập, có quyền admin repo
+cd ~/code/my-project && gh auth status          # gh must be signed in, with repo admin rights
 /tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref v0
 ```
 
-`bootstrap.sh` chỉ lo phần file + nhãn + `develop`; [`install.sh`](#cài-bằng-một-lệnh)
-gọi nó rồi làm tiếp secret, settings và commit.
+`bootstrap.sh` only handles files + labels + `develop`; [`install.sh`](#one-command-install)
+calls it and then continues with secrets, settings and the commit.
 
-| Tuỳ chọn | Ý nghĩa |
+| Option | Meaning |
 |---|---|
-| `--stack <s>` | Điền sẵn lệnh cho stack: `auto` (mặc định, nhận diện từ file trong repo), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Các giá trị giống ví dụ ở §3.3. |
-| `--ref <ref>` | Ghim mọi `uses: kokoroou/agent-toolkit/...@<ref>`. Khuyến nghị `v0` (tag di động của bản 0.x hiện tại; `v1` khi toolkit lên 1.0.0). `main` = luôn mới nhất, chỉ dùng cho sandbox. Mặc định: `main`. |
-| `--force` | Ghi đè file đã có trong repo dự án. |
-| `--no-labels` | Không tạo nhãn / branch `develop` (khi chưa có `gh` hoặc đã tạo rồi). |
+| `--stack <s>` | Pre-fill commands for a stack: `auto` (default, detected from repo files), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Values match the examples in §3.3. |
+| `--ref <ref>` | Pin every `uses: kokoroou/agent-toolkit/...@<ref>`. Recommended: `v0` (moving tag of the current 0.x release; `v1` once the toolkit reaches 1.0.0). `main` = always latest, sandbox only. Default: `main`. |
+| `--force` | Overwrite existing files in the project repo. |
+| `--no-labels` | Do not create labels / the `develop` branch (when `gh` is unavailable or they already exist). |
 
-### 2.2 Bootstrap làm gì
+### 2.2 What bootstrap does
 
-1. Chép từ `templates/` sang repo dự án:
+1. Copies from `templates/` into the project repo:
 
-   | File | Vai trò |
+   | File | Role |
    |---|---|
-   | `.github/workflows/ci.yml` | CI (tên `CI`): lint, format, test, coverage, tiêu đề PR, Semgrep, Gitleaks |
-   | `.github/workflows/agent-triage.yml` | Triage issue khi mở/sửa/comment, quét 6 giờ/lần |
-   | `.github/workflows/agent-implement.yml` | Build agent; chạy khi triage dispatch hoặc khi gắn nhãn `agent:implement` |
-   | `.github/workflows/agent-review.yml` | Review PR mang nhãn `agent` (tên `Agent Review`) |
-   | `.github/workflows/agent-merge-gate.yml` | Chạy sau `CI`/`Agent Review`: merge, gửi đi sửa, hoặc chặn |
-   | `.github/workflows/release.yml` | release-please khi push `main` |
-   | `.github/workflows/agent-usage-report.yml` | Báo cáo phút Actions + chi phí Claude hằng tuần |
-   | `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` | Template issue có cấu trúc, tắt issue trống |
-   | `.github/pull_request_template.md` | Template PR |
-   | `.github/dependabot.yml` | Cập nhật dependency, PR vào `develop` |
-   | `CLAUDE.md` | Khung hướng dẫn dự án cho agent |
+   | `.github/workflows/ci.yml` | CI (named `CI`): lint, format, test, coverage, PR title, Semgrep, Gitleaks |
+   | `.github/workflows/agent-triage.yml` | Triage issues on open/edit/comment, sweep every 6 hours |
+   | `.github/workflows/agent-implement.yml` | Build agent; runs when triage dispatches it or when `agent:implement` is added |
+   | `.github/workflows/agent-review.yml` | Review PRs labeled `agent` (named `Agent Review`) |
+   | `.github/workflows/agent-merge-gate.yml` | Runs after `CI`/`Agent Review`: merge, send for a fix, or block |
+   | `.github/workflows/release.yml` | release-please on push to `main` |
+   | `.github/workflows/agent-usage-report.yml` | Weekly Actions minutes + Claude cost report |
+   | `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` | Structured issue templates, blank issues disabled |
+   | `.github/pull_request_template.md` | PR template |
+   | `.github/dependabot.yml` | Dependency updates, PRs into `develop` |
+   | `CLAUDE.md` | Project guidance skeleton for the agents |
 
-2. Thay `@main` trong các dòng `uses:` bằng `--ref`, điền lệnh theo `--stack` vào các
-   khối `edit for your stack`, `dependabot.yml`, `release.yml` và mục *Commands* của `CLAUDE.md`.
-3. Tạo ~24 nhãn (`needs-triage`, `agent`, `risk:high`, `size:M`…) — chạy lại an toàn.
-4. Tạo branch `develop` từ default branch nếu chưa có.
-5. Ghi `.github/agent-toolkit.lock` (bản toolkit, stack, danh sách file nó quản lý) để
-   `upgrade.sh` nâng cấp được về sau (§10).
+2. Replaces `@main` in the `uses:` lines with `--ref`, and fills in the `--stack` commands
+   in the `edit for your stack` blocks, `dependabot.yml`, `release.yml` and the *Commands*
+   section of `CLAUDE.md`.
+3. Creates ~24 labels (`needs-triage`, `agent`, `risk:high`, `size:M`…) — safe to re-run.
+4. Creates the `develop` branch from the default branch if missing.
+5. Writes `.github/agent-toolkit.lock` (toolkit version, stack, list of files it manages)
+   so `upgrade.sh` can upgrade later (§10).
 
-### 2.3 Repo đã có sẵn file
+### 2.3 Repo with existing files
 
-Bootstrap in danh sách `Kept existing`. Các file này thuộc về dự án: bootstrap và
-`upgrade.sh` không bao giờ ghi đè chúng (§10.4). Với từng file:
+Bootstrap prints a `Kept existing` list. Those files belong to the project: bootstrap and
+`upgrade.sh` never overwrite them (§10.4). For each file:
 
-- **`ci.yml` riêng**: có thể giữ CI cũ, nhưng workflow phải tên **`CI`** (merge gate và
-  vòng fix tìm theo tên này), có `workflow_dispatch:` và chạy trên `pull_request` vào
-  `develop`. Hoặc đổi `ci-workflow` / `workflows: [...]` trong caller cho khớp tên CI cũ.
-- **`CLAUDE.md` có sẵn**: thêm các mục *Commands*, *Architecture*, *Do not touch* từ
-  `/tmp/agent-toolkit/templates/CLAUDE.md`.
-- **Issue template riêng**: giữ được, nhưng template phải gắn nhãn `needs-triage` và nên
-  có các mục Goal / Constraints / Acceptance criteria để triage chấm điểm tốt.
+- **Your own `ci.yml`**: you can keep your CI, but the workflow must be named **`CI`**
+  (the merge gate and fix loop look it up by that name), have `workflow_dispatch:` and run
+  on `pull_request` into `develop`. Or change `ci-workflow` / `workflows: [...]` in the
+  callers to match your CI's name.
+- **Existing `CLAUDE.md`**: add the *Commands*, *Architecture*, *Do not touch* sections
+  from `/tmp/agent-toolkit/templates/CLAUDE.md`.
+- **Your own issue templates**: fine to keep, but they must add the `needs-triage` label
+  and should have Goal / Constraints / Acceptance criteria sections so triage scores well.
 
-## 3. Sửa workflow cho stack của dự án
+## 3. Adapt the workflows to your stack
 
-Template mặc định cho **Node + Jest + Prettier + ESLint**; `--stack` của bootstrap/install
-đã điền sẵn lệnh cho pnpm, yarn, Python (pytest + ruff) và Go. Vẫn nên kiểm tra các khối
-`# ── edit for your stack ──` và sửa cho khớp dự án (ví dụ dự án Python không dùng ruff).
+The default template is **Node + Jest + Prettier + ESLint**; `--stack` in bootstrap/install
+already fills in commands for pnpm, yarn, Python (pytest + ruff) and Go. Still review the
+`# ── edit for your stack ──` blocks and adjust them to the project (e.g. a Python project
+that does not use ruff).
 
 ### 3.1 `ci.yml`
 
-| Input | Ý nghĩa |
+| Input | Meaning |
 |---|---|
-| `setup-command` | Cài dependency (chạy trước mọi bước) |
-| `lint-command`, `format-check-command` | Để trống = bỏ qua bước đó |
-| `test-command` | Chạy test. Để trống nếu `coverage-command` đã chạy test (tiết kiệm phút) |
-| `coverage-command` | **Dòng cuối stdout phải chứa số phần trăm** (vd `87.3` hoặc `87.3%`; lấy số cuối cùng trên dòng). Mọi output khác chuyển sang stderr bằng `>&2`. Để trống = không gate coverage |
-| `coverage-tolerance` | Cho phép giảm bao nhiêu điểm phần trăm so với `develop` (`"0"` = không được giảm) |
-| `enable-security`, `semgrep-config` | Semgrep (chỉ báo finding mới so với base) + Gitleaks |
-| `enable-pr-title-check` | Tiêu đề PR phải theo Conventional Commits |
+| `setup-command` | Install dependencies (runs before every step) |
+| `lint-command`, `format-check-command` | Empty = skip that step |
+| `test-command` | Run tests. Leave empty if `coverage-command` already runs the tests (saves minutes) |
+| `coverage-command` | **The last stdout line must contain the percentage** (e.g. `87.3` or `87.3%`; the last number on the line is used). Send all other output to stderr with `>&2`. Empty = no coverage gate |
+| `coverage-tolerance` | How many percentage points coverage may drop vs `develop` (`"0"` = no drop allowed) |
+| `enable-security`, `semgrep-config` | Semgrep (new findings vs base only) + Gitleaks |
+| `enable-pr-title-check` | PR titles must follow Conventional Commits |
 
-Cần thêm bước cài runtime (setup-node/python/go) thì đưa vào `setup-command`; runner
-`ubuntu-latest` đã có sẵn Node, Python, Go, Java ở phiên bản phổ biến.
+If you need a runtime setup step (setup-node/python/go), put it in `setup-command`; the
+`ubuntu-latest` runner already has common versions of Node, Python, Go and Java.
 
-### 3.2 `agent-implement.yml` và job `fix` trong `agent-merge-gate.yml`
+### 3.2 `agent-implement.yml` and the `fix` job in `agent-merge-gate.yml`
 
-| Input | Ý nghĩa |
+| Input | Meaning |
 |---|---|
-| `setup-command` | Như CI — để agent chạy được test |
-| `extra-allowed-tools` | Các lệnh shell agent được phép chạy, dạng `Bash(<lệnh>)` hoặc `Bash(<tiền tố>:*)`. **Thiếu lệnh nào thì agent không chạy được lệnh đó** (không tự test được → PR dễ đỏ) |
-| `model`, `max-turns`, `timeout-minutes` | Giới hạn chi phí / thời gian mỗi run |
-| `ci-dispatch-workflow`, `review-dispatch-workflow` | Chỉ dùng khi **không** có App; giữ nguyên nếu không đổi tên file |
+| `setup-command` | Same as CI — so the agent can run tests |
+| `extra-allowed-tools` | Shell commands the agent may run, as `Bash(<command>)` or `Bash(<prefix>:*)`. **A command missing here cannot be run by the agent** (it cannot test itself → PRs go red more often) |
+| `model`, `max-turns`, `timeout-minutes` | Cost / time limits per run |
+| `ci-dispatch-workflow`, `review-dispatch-workflow` | Only used **without** an App; leave as is unless you renamed the files |
 
-Hai chỗ (`agent-implement.yml` và job `fix`) phải **giống nhau** về `setup-command` và
-`extra-allowed-tools`.
+The two places (`agent-implement.yml` and the `fix` job) must have the **same**
+`setup-command` and `extra-allowed-tools`.
 
-Trong job `gate` của `agent-merge-gate.yml`:
+In the `gate` job of `agent-merge-gate.yml`:
 
-| Input | Ý nghĩa |
+| Input | Meaning |
 |---|---|
-| `smoke-command` | Chạy trên `develop` ngay sau merge; fail → PR revert tự động. Để trống = bỏ qua |
-| `required-statuses` | Mặc định `agent/review` (status do reviewer ghi) |
-| `required-checks` / `ignore-checks` | Tên check run bắt buộc / bỏ qua |
-| `block-labels` | Mặc định `needs-human,risk:high,do-not-merge,wip` |
-| `merge-method` | Mặc định `squash` |
+| `smoke-command` | Runs on `develop` right after a merge; failure → automatic revert PR. Empty = skip |
+| `required-statuses` | Default `agent/review` (the status written by the reviewer) |
+| `required-checks` / `ignore-checks` | Check runs that are required / ignored |
+| `block-labels` | Default `needs-human,risk:high,do-not-merge,wip` |
+| `merge-method` | Default `squash` |
 
-### 3.3 Ví dụ theo stack
+### 3.3 Examples per stack
 
 **Python (pytest + ruff):**
 
@@ -280,7 +315,7 @@ lint-command: go vet ./...
 format-check-command: test -z "$(gofmt -l .)"
 coverage-command: >-
   go test -coverprofile=c.out ./... >&2 &&
-  go tool cover -func=c.out | tail -1 | awk '{print $3}'   # "84.6%" cũng được chấp nhận
+  go tool cover -func=c.out | tail -1 | awk '{print $3}'   # "84.6%" is accepted too
 # agent-implement.yml + fix job
 setup-command: go mod download
 extra-allowed-tools: "Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*),Bash(go mod:*)"
@@ -288,205 +323,214 @@ extra-allowed-tools: "Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt
 smoke-command: go build ./... && go test -run Smoke ./...
 ```
 
-**Node với pnpm:**
+**Node with pnpm:**
 
 ```yaml
 setup-command: corepack enable && pnpm install --frozen-lockfile
 extra-allowed-tools: "Bash(pnpm install:*),Bash(pnpm run:*),Bash(pnpm test:*),Bash(pnpm exec:*)"
 ```
 
-Kiểm tra `coverage-command` trên máy trước khi commit — dòng cuối phải là một số:
+Check `coverage-command` locally before committing — the last line must be a number:
 
 ```bash
-bash -c '<coverage-command của bạn>' 2>/dev/null | tail -1   # vd: 84.61
+bash -c '<your coverage-command>' 2>/dev/null | tail -1   # e.g. 84.61
 ```
 
-### 3.4 Các tuỳ chỉnh khác thường dùng
+### 3.4 Other common tweaks
 
-- `agent-triage.yml`: `max-rounds` (số vòng hỏi lại, 1–5, mặc định 5), `auto-implement-max-size`
-  (`XS|S|M|L`; lớn hơn thì chờ người gắn `agent:implement`), bỏ `dispatch-on-ready`
-  nếu muốn luôn tự quyết định issue nào được build.
-- `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` theo ngân sách của bạn.
-- Branch tích hợp khác `develop`: đổi `base-branch`, `baseline-branch` và `branches:`
-  trong mọi caller cho khớp.
+- `agent-triage.yml`: `max-rounds` (clarification rounds, 1–5, default 5),
+  `auto-implement-max-size` (`XS|S|M|L`; larger issues wait for a person to add
+  `agent:implement`), remove `dispatch-on-ready` if you always want to decide which issues
+  get built.
+- `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` for your budget.
+- An integration branch other than `develop`: change `base-branch`, `baseline-branch` and
+  `branches:` in every caller to match.
 
-## 4. Viết `CLAUDE.md`
+## 4. Write `CLAUDE.md`
 
-`CLAUDE.md` ở root repo được planner, implementer và reviewer đọc ở mọi run. Đây là
-nơi quan trọng nhất để agent làm đúng ý bạn. Giữ ngắn, cụ thể:
+`CLAUDE.md` at the repo root is read by the planner, implementer and reviewer on every
+run. It is the single most important place to make the agents do what you want. Keep it
+short and specific:
 
-- **Commands**: đúng các lệnh install/lint/format/test/coverage/build — khớp với
-  `extra-allowed-tools`, nếu không agent sẽ thử lệnh mà nó không được phép chạy.
-- **Architecture**: 5–15 dòng: thư mục nào chứa gì, luồng dữ liệu, abstraction chính.
-  Trỏ tới file, không mô tả dài.
-- **Conventions**: chỉ những gì khác mặc định của toolkit (Conventional Commits, test cho
-  mọi thay đổi hành vi, coverage không giảm). Ví dụ: "dùng `Result<T>` thay vì throw",
-  "API mới phải có OpenAPI spec trong `docs/api/`".
-- **Do not touch**: đường dẫn agent không được sửa (code sinh tự động, vendored,
-  migration đã chạy, `.github/workflows/`…).
+- **Commands**: the exact install/lint/format/test/coverage/build commands — matching
+  `extra-allowed-tools`, otherwise the agent tries commands it is not allowed to run.
+- **Architecture**: 5–15 lines: which directory holds what, data flow, key abstractions.
+  Point to files rather than describing them at length.
+- **Conventions**: only what differs from the toolkit defaults (Conventional Commits,
+  tests for every behavior change, no coverage drop). E.g. "use `Result<T>` instead of
+  throwing", "new APIs need an OpenAPI spec in `docs/api/`".
+- **Do not touch**: paths the agent must not modify (generated code, vendored code,
+  applied migrations, `.github/workflows/`…).
 
-## 5. Thêm secrets
+## 5. Add secrets
+
+> The installer already set the secrets. This section is for manual installs, rotating
+> tokens, or adding `PROJECT_TOKEN` / `GITLEAKS_LICENSE` later.
 
 **Repo → Settings → Secrets and variables → Actions → New repository secret**
-(`https://github.com/<owner>/<repo>/settings/secrets/actions`), hoặc bằng CLI
-(chạy trong thư mục repo):
+(`https://github.com/<owner>/<repo>/settings/secrets/actions`), or with the CLI (from the
+repo directory):
 
 ```bash
-gh secret set CLAUDE_CODE_OAUTH_TOKEN          # dán token, Enter, Ctrl-D — hoặc ANTHROPIC_API_KEY
+gh secret set CLAUDE_CODE_OAUTH_TOKEN          # paste the token, Enter, Ctrl-D — or ANTHROPIC_API_KEY
 gh secret set AGENT_APP_ID --body 123456
 gh secret set AGENT_APP_PRIVATE_KEY < ~/Downloads/kokoroou-agent.*.private-key.pem
-gh secret set PROJECT_TOKEN                    # chỉ khi dùng Projects (§9.1)
-gh secret list                                 # kiểm tra
+gh secret set PROJECT_TOKEN                    # only when using Projects (§9.1)
+gh secret list                                 # verify
 ```
 
-| Secret | Bắt buộc | Ghi chú |
+| Secret | Required | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` *hoặc* `CLAUDE_CODE_OAUTH_TOKEN` | ✔ | Xem [GETTING-STARTED §4](GETTING-STARTED.md#4-chuẩn-bị-thông-tin-đăng-nhập-claude) |
-| `AGENT_APP_ID`, `AGENT_APP_PRIVATE_KEY` | khuyến nghị | App phải **được cài vào repo này** ([GETTING-STARTED §5.3](GETTING-STARTED.md#53-cài-app-vào-repo)) |
-| `PROJECT_TOKEN` | nếu dùng Projects | classic PAT, scope `project` + `repo` |
-| `GITLEAKS_LICENSE` | chỉ repo thuộc organization | đăng ký miễn phí tại gitleaks.io |
+| `ANTHROPIC_API_KEY` *or* `CLAUDE_CODE_OAUTH_TOKEN` | ✔ | See [GETTING-STARTED §4](GETTING-STARTED.md#4-get-your-claude-credentials) |
+| `AGENT_APP_ID`, `AGENT_APP_PRIVATE_KEY` | recommended | The App must be **installed on this repo** ([GETTING-STARTED §5.3](GETTING-STARTED.md#53-install-the-app-on-your-repos)) |
+| `PROJECT_TOKEN` | when using Projects | classic PAT, scopes `project` + `repo` |
+| `GITLEAKS_LICENSE` | organization repos only | free registration at gitleaks.io |
 
-Caller workflow dùng `secrets: inherit` nên tên secret phải đúng như bảng (không phân
-biệt hoa thường). Với organization, có thể đặt các secret này ở mức org và chia cho
-nhiều repo.
+The caller workflows pass each secret by name (`${{ secrets.ANTHROPIC_API_KEY }}`…), so
+the secret names must match the table (case-insensitive). In an organization you can set
+these secrets at the org level and share them with several repos.
 
-## 6. Cấu hình Settings của repo
+## 6. Configure repo Settings
+
+> The installer already enabled items 1–3 below (unless you used `--skip-settings`). Read
+> this to double-check when you hit permission errors.
 
 1. **Settings → Actions → General**
-   - *Actions permissions*: cho phép actions và reusable workflows (mặc định *Allow all
-     actions* là được; nếu giới hạn, thêm `kokoroou/agent-toolkit/*`, `anthropics/*`,
+   - *Actions permissions*: allow actions and reusable workflows (the default *Allow all
+     actions* is fine; if restricted, add `kokoroou/agent-toolkit/*`, `anthropics/*`,
      `actions/*`, `googleapis/release-please-action@*`, `gitleaks/gitleaks-action@*`,
-     `oven-sh/setup-bun@*` — cái cuối do `anthropics/claude-code-action` gọi).
-   - *Workflow permissions*: **Read and write permissions** và tick **Allow GitHub
-     Actions to create and approve pull requests**. Thiếu bước này agent không mở được
-     PR và release-please không mở được release PR.
-2. **Settings → General → Pull Requests**: bật *Allow squash merging* (merge gate dùng
-   squash) và nên bật *Automatically delete head branches*.
-3. **Settings → Advanced Security** (trên sidebar; trước đây tên là *Code
-   security*): bật *Dependabot alerts* và *Dependabot security updates* (miễn phí cả với
-   repo private, không cần mua gói GitHub Advanced Security dù trang mang tên đó).
+     `oven-sh/setup-bun@*` — the last one is called by `anthropics/claude-code-action`).
+   - *Workflow permissions*: **Read and write permissions** and tick **Allow GitHub
+     Actions to create and approve pull requests**. Without this the agent cannot open PRs
+     and release-please cannot open release PRs.
+2. **Settings → General → Pull Requests**: enable *Allow squash merging* (the merge gate
+   squashes) and preferably *Automatically delete head branches*.
+3. **Settings → Advanced Security** (in the sidebar; formerly *Code security*): enable
+   *Dependabot alerts* and *Dependabot security updates* (free even for private repos; no
+   GitHub Advanced Security purchase needed despite the page name).
 
-Không cần (và gói Free + private cũng không có) branch protection: merge gate tự kiểm
-tra checks và statuses.
+Branch protection is not needed (and Free + private does not have it): the merge gate
+checks checks and statuses itself.
 
-## 7. Chọn default branch
+## 7. Choose the default branch
 
-`workflow_run` (merge gate), `schedule` (triage quét định kỳ, usage report) và
-`workflow_dispatch` chỉ chạy **file workflow nằm trên default branch**. Chọn một:
+`workflow_run` (merge gate), `schedule` (periodic triage sweep, usage report) and
+`workflow_dispatch` only run **workflow files on the default branch**. Pick one:
 
-| Cách | Làm gì | Ưu / nhược |
+| Option | What to do | Pros / cons |
 |---|---|---|
-| **A. `develop` là default** (khuyến nghị) | *Settings → General → Default branch* → `develop` | Caller workflow sống ở đó; `Closes #N` tự đóng issue; `main` chỉ nhận merge tay khi release. PR thường của người khác cũng mặc định vào `develop` |
-| **B. Giữ `main` là default** | Commit caller vào `main`, và mỗi lần sửa workflow phải merge sang `main` | Không đổi thói quen, nhưng dễ quên đồng bộ — workflow trên `develop` khác `main` sẽ gây hành vi khó hiểu |
+| **A. `develop` as default** (recommended) | *Settings → General → Default branch* → `develop` | The callers live there; `Closes #N` closes issues automatically; `main` only receives manual release merges. Other people's PRs also target `develop` by default |
+| **B. Keep `main` as default** | Commit the callers to `main`, and merge every workflow change into `main` | No habit change, but easy to forget to sync — workflows differing between `develop` and `main` cause confusing behavior |
 
-## 8. Commit và kiểm tra
+## 8. Commit and verify
 
 ```bash
 git switch <default-branch>
 git add .github CLAUDE.md
 git commit -m "ci: add agent-toolkit pipeline"
 git push
-git switch develop && git merge --ff-only <default-branch> && git push   # nếu dùng cách B
+git switch develop && git merge --ff-only <default-branch> && git push   # if using option B
 ```
 
-Kiểm tra theo thứ tự:
+Verify in order:
 
-1. **Actions** tab: thấy các workflow `CI`, `Agent Triage`, `Agent Implement`,
-   `Agent Review`, `Agent Merge Gate`, `Release`, `Agent Usage Report`. Không có file nào
-   báo lỗi cú pháp (biểu tượng ⚠).
-2. Chạy CI tay: *Actions → CI → Run workflow* trên `develop` → phải xanh. Run này cũng
-   ghi baseline coverage cho `develop`.
-3. **Issues → New issue → Feature / change request** với một thay đổi nhỏ, rõ ràng, ví dụ:
-   - Goal: "Thêm hàm `add(a, b)` trả về tổng hai số."
+1. **Actions** tab: you see the `CI`, `Agent Triage`, `Agent Implement`, `Agent Review`,
+   `Agent Merge Gate`, `Release`, `Agent Usage Report` workflows. None reports a syntax
+   error (⚠ icon).
+2. Run CI by hand: *Actions → CI → Run workflow* on `develop` → must be green. This run
+   also records the coverage baseline for `develop`.
+3. **Issues → New issue → Feature / change request** with a small, clear change, e.g.:
+   - Goal: "Add a function `add(a, b)` that returns the sum of two numbers."
    - Constraints: "None"
-   - Acceptance criteria: "- [ ] `add(2, 3)` trả về 5  - [ ] có unit test"
-4. Theo dõi: `Agent Triage` gắn `ready-for-plan` → `Agent Implement` mở PR
-   `agent/issue-N` → `CI` + `Agent Review` → `Agent Merge Gate` merge vào `develop` và
-   đóng issue. Thường mất 10–30 phút.
+   - Acceptance criteria: "- [ ] `add(2, 3)` returns 5  - [ ] has a unit test"
+4. Watch: `Agent Triage` adds `ready-for-plan` → `Agent Implement` opens PR
+   `agent/issue-N` → `CI` + `Agent Review` → `Agent Merge Gate` merges into `develop` and
+   closes the issue. Usually takes 10–30 minutes.
 
-Nếu kẹt ở bước nào, xem [§12](#12-xử-lý-sự-cố).
+If it gets stuck at any step, see [§12](#12-troubleshooting).
 
-## 9. Tuỳ chọn
+## 9. Optional
 
 ### 9.1 GitHub Projects
 
-1. Tạo Project (v2): *Profile → Projects → New project* (hoặc trong org).
-2. Thêm hai field **Single select**: `Priority` với option `P0`, `P1`, `P2`, `P3`;
-   `Size` với option `XS`, `S`, `M`, `L`, `XL` (đúng chính tả).
-3. Lấy số project từ URL (`.../projects/3` → `3`).
-4. Trong `agent-triage.yml`, bỏ comment và điền:
+1. Create a Project (v2): *Profile → Projects → New project* (or in the org).
+2. Add two **Single select** fields: `Priority` with options `P0`, `P1`, `P2`, `P3`;
+   `Size` with options `XS`, `S`, `M`, `L`, `XL` (exact spelling).
+3. Take the project number from the URL (`.../projects/3` → `3`).
+4. In `agent-triage.yml`, uncomment and fill in:
    ```yaml
    project-owner: kokoroou
    project-number: "3"
    ```
-5. Thêm secret `PROJECT_TOKEN` ([GETTING-STARTED §6](GETTING-STARTED.md#6-pat-cho-github-projects-tuỳ-chọn)).
+5. Add the `PROJECT_TOKEN` secret ([GETTING-STARTED §6](GETTING-STARTED.md#6-pat-for-github-projects-optional)).
 
 ### 9.2 Dependabot
 
-Sửa `.github/dependabot.yml`: đổi `package-ecosystem: npm` thành ecosystem của bạn
-(`pip`, `gomod`, `cargo`, `maven`, `gradle`, `composer`, `docker`…), thêm khối nếu
-dùng nhiều ecosystem. PR của Dependabot không có nhãn `agent` nên merge gate để bạn tự
-merge; muốn agent review, gắn nhãn `agent` vào PR đó.
+Edit `.github/dependabot.yml`: change `package-ecosystem: npm` to your ecosystem (`pip`,
+`gomod`, `cargo`, `maven`, `gradle`, `composer`, `docker`…), adding blocks if you use
+several. Dependabot PRs do not carry the `agent` label, so the merge gate leaves them for
+you to merge; to have the agent review one, add the `agent` label to it.
 
 ### 9.3 ci-doctor (gh-aw)
 
-Agent quan sát lỗi CI trên `develop`/`main` (thứ vòng fix trên PR không thấy) và tạo
-issue `needs-triage`:
+An agent that watches CI failures on `develop`/`main` (which the PR fix loop cannot see)
+and opens a `needs-triage` issue:
 
 ```bash
-gh extension install github/gh-aw     # nếu chưa có
+gh extension install github/gh-aw     # if not installed yet
 gh aw add kokoroou/agent-toolkit/ci-doctor
-gh aw compile                          # sinh .github/workflows/ci-doctor.lock.yml
-gh aw secrets set ANTHROPIC_API_KEY    # hoặc theo hướng dẫn gh aw cho engine claude
+gh aw compile                          # generates .github/workflows/ci-doctor.lock.yml
+gh aw secrets set ANTHROPIC_API_KEY    # or follow gh aw's instructions for the claude engine
 git add .github && git commit -m "ci: add ci-doctor" && git push
 ```
 
-Commit cả file `.md` và `.lock.yml` lên default branch.
+Commit both the `.md` and the `.lock.yml` files to the default branch.
 
 ### 9.4 Release
 
-`release.yml` chạy release-please khi push lên `main`:
+`release.yml` runs release-please on push to `main`:
 
-- `release-type`: `node`, `python`, `go`, `rust`, `java`, `simple`… — quyết định file
-  version nào được cập nhật.
-- Muốn đính kèm file build vào GitHub Release: bỏ comment `setup-command`,
+- `release-type`: `node`, `python`, `go`, `rust`, `java`, `simple`… — decides which
+  version files are updated.
+- To attach build output to the GitHub Release: uncomment `setup-command`,
   `build-command`, `artifact-paths`.
 
-Quy trình: merge `develop` → `main` (PR tay) → release-please mở PR "chore(main): release x.y.z"
-→ review CHANGELOG → merge → tag + GitHub Release. Commit phải theo Conventional
-Commits (`feat:` → minor, `fix:` → patch, `feat!:` → major); CI đã kiểm tiêu đề PR.
+Flow: merge `develop` → `main` (manual PR) → release-please opens a
+"chore(main): release x.y.z" PR → review the CHANGELOG → merge → tag + GitHub Release.
+Commits must follow Conventional Commits (`feat:` → minor, `fix:` → patch, `feat!:` →
+major); CI already checks PR titles.
 
-## 10. Ghim và nâng cấp phiên bản toolkit
+## 10. Pin and upgrade the toolkit version
 
-- `--ref v0` ghim vào **tag di động** của major hiện tại: nhận bản vá và tính năng mới,
-  không nhận breaking change (trước 1.0.0, breaking change tăng minor nên `v0` vẫn có thể
-  đổi hành vi — đọc [CHANGELOG](../CHANGELOG.md) khi cập nhật).
-- Ghim chặt hơn: `--ref v0.1.0` hoặc một commit SHA.
-- Plugin (agent/lệnh) được cài từ `toolkit-marketplace`, mặc định là nhánh mặc định của
-  toolkit. Để ghim cả plugin, thêm vào các job gọi `triage.yml`, `implement.yml`,
-  `review.yml` (kể cả job `fix`):
+- `--ref v0` pins to the current major's **moving tag**: you get fixes and new features,
+  but no breaking changes (before 1.0.0, breaking changes bump the minor, so `v0` can still
+  change behavior — read the [CHANGELOG](../CHANGELOG.md) when updating).
+- Tighter pinning: `--ref v0.1.0` or a commit SHA.
+- The plugin (agents/commands) is installed from `toolkit-marketplace`, which defaults to
+  the toolkit's default branch. To pin the plugin too, add this to the jobs calling
+  `triage.yml`, `implement.yml`, `review.yml` (including the `fix` job):
 
   ```yaml
   with:
     toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#v0
   ```
 
-### 10.1 Có hai thứ cần nâng cấp
+### 10.1 Two things to upgrade
 
-| Thứ | Nằm ở đâu | Nâng cấp thế nào |
+| Thing | Where it lives | How to upgrade |
 |---|---|---|
-| Logic pipeline (reusable workflow, plugin) | Trong toolkit, dự án gọi bằng `uses: …@v0` | **Tự động** ở run kế tiếp khi toolkit phát hành trong cùng major (`v0`). Sang major mới: `upgrade.sh --to v1` |
-| File đã chép vào dự án (caller workflow, issue/PR template, `dependabot.yml`) | Trong repo dự án | `upgrade.sh` — khi CHANGELOG nói template có input/trigger/nhãn mới |
+| Pipeline logic (reusable workflows, plugin) | In the toolkit, called via `uses: …@v0` | **Automatic** on the next run when the toolkit releases within the same major (`v0`). New major: `upgrade.sh --to v1` |
+| Files copied into the project (caller workflows, issue/PR templates, `dependabot.yml`) | In the project repo | `upgrade.sh` — when the CHANGELOG says templates gained inputs/triggers/labels |
 
-### 10.2 Lệnh nâng cấp
+### 10.2 Upgrade command
 
-Trong thư mục clone của dự án, đứng ở default branch, không có thay đổi chưa commit
-trong `.github/`:
+From the project's clone, on the default branch, with no uncommitted changes in
+`.github/`:
 
 ```bash
-# xem trước, không ghi gì
+# preview, writes nothing
 curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
-# áp dụng: bản mới nhất của major đang ghim (v0), hoặc --to v1 / --to v0.3.0
+# apply: latest release of the pinned major (v0), or --to v1 / --to v0.3.0
 curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --to v1
 git diff && git add .github && git commit -m "ci: upgrade agent-toolkit to v1"
 ```
@@ -495,88 +539,91 @@ git diff && git add .github && git commit -m "ci: upgrade agent-toolkit to v1"
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) upgrade --to v1
 ```
 
-Script không commit; nó in bảng từng file, CHANGELOG từ bản đang cài tới bản mới và cập
-nhật nhãn (`--no-labels` để bỏ). Thoát mã `1` nếu còn xung đột.
+The script does not commit; it prints a per-file table, the CHANGELOG from the installed
+release to the new one, and updates labels (`--no-labels` to skip). It exits with code `1`
+if conflicts remain.
 
-### 10.3 Cách script giữ lại chỉnh sửa của bạn
+### 10.3 How the script keeps your edits
 
-`bootstrap.sh` (và `install.sh`) ghi **`.github/agent-toolkit.lock`** — hãy commit file
-này, và đừng sửa tay ngoài các dòng `managed=` (§10.4):
+`bootstrap.sh` (and `install.sh`) writes **`.github/agent-toolkit.lock`** — commit this
+file, and do not edit it by hand beyond the `managed=` lines (§10.4):
 
 ```
-version=0.1.0              # bản toolkit đã sinh ra các file
-ref=v0                     # --ref đã ghim
-commit=45c2ae5…            # commit chính xác của toolkit
-stack=python               # --stack đã dùng
-managed=.github/workflows/ci.yml   # file do toolkit quản lý (một dòng mỗi file)
+version=0.1.0              # toolkit release that generated the files
+ref=v0                     # the pinned --ref
+commit=45c2ae5…            # exact toolkit commit
+stack=python               # the --stack used
+managed=.github/workflows/ci.yml   # toolkit-managed file (one line per file)
 ```
 
-Khi nâng cấp, script sinh lại file của **bản cũ** (commit + stack trong lock) và của
-**bản mới**, rồi với từng file *managed* so ba phía — như `git merge`:
+When upgrading, the script regenerates the files of the **old release** (commit + stack
+from the lock) and of the **new release**, then compares three sides for each *managed*
+file — like `git merge`:
 
-| Bản của bạn so với bản cũ | Toolkit đổi file? | Kết quả |
+| Your copy vs the old release | Toolkit changed the file? | Result |
 |---|---|---|
-| Chưa sửa | có | `↑` thay bằng bản mới |
-| Đã sửa (vd khối `edit for your stack`) | không | `=` giữ nguyên |
-| Đã sửa | có, ở chỗ khác | `~` bản mới + chỉnh sửa của bạn (`git merge-file`) |
-| Đã sửa | có, **cùng dòng** | `!` xung đột: file chứa `<<<<<<< yours` … `>>>>>>> agent-toolkit v1`, sửa tay |
-| Không có (file mới của toolkit) | — | `+` thêm, ghi vào `managed=` |
-| Bạn đã xoá | — | không thêm lại |
-| Toolkit bỏ file | — | xoá nếu bạn chưa sửa, ngược lại giữ và báo `!` |
+| Unchanged | yes | `↑` replaced with the new version |
+| Edited (e.g. `edit for your stack` blocks) | no | `=` kept as is |
+| Edited | yes, elsewhere | `~` new version + your edits (`git merge-file`) |
+| Edited | yes, **same lines** | `!` conflict: the file contains `<<<<<<< yours` … `>>>>>>> agent-toolkit v1`, resolve by hand |
+| Missing (new toolkit file) | — | `+` added, recorded in `managed=` |
+| You deleted it | — | not re-added |
+| Toolkit removed the file | — | deleted if you did not edit it, otherwise kept and reported `!` |
 
-Để nâng cấp không xung đột: chỉ sửa giá trị trong các khối `edit for your stack` và các
-input của `with:`; muốn thêm bước riêng thì viết workflow riêng thay vì sửa caller.
+For conflict-free upgrades: only change values in the `edit for your stack` blocks and the
+`with:` inputs; for extra steps write your own workflow instead of editing a caller.
 
-### 10.4 File trùng tên — ai sở hữu file nào
+### 10.4 Files with the same name — who owns what
 
-| Loại | File | Khi nâng cấp |
+| Kind | Files | On upgrade |
 |---|---|---|
-| **Toolkit quản lý** | file bootstrap đã chép (dòng `managed=` trong lock) | 3-way merge như trên |
-| **Của dự án** | file đã có **trước** khi cài (bootstrap báo `Kept existing`), vd `ci.yml` hay issue template riêng | không bao giờ bị ghi; nếu template tương ứng đổi, script báo `·` để bạn tự gộp |
-| **Chỉ sinh lần đầu** | `CLAUDE.md` | không bao giờ bị ghi; script đưa link so sánh nếu template đổi |
+| **Toolkit-managed** | files bootstrap copied (`managed=` lines in the lock) | 3-way merge as above |
+| **Project-owned** | files that existed **before** installing (bootstrap reported `Kept existing`), e.g. your own `ci.yml` or issue templates | never written; if the matching template changes, the script reports `·` so you can merge by hand |
+| **Generated once** | `CLAUDE.md` | never written; the script gives a comparison link if the template changes |
 
-Muốn chuyển một file của dự án sang cho toolkit quản lý: xoá file, chạy lại
-`bootstrap.sh --ref <ref đang dùng>` (không `--force`), gộp lại phần riêng rồi commit.
-Muốn toolkit thôi quản lý một file: xoá dòng `managed=` của nó trong lock.
+To hand a project-owned file over to the toolkit: delete it, re-run
+`bootstrap.sh --ref <current ref>` (without `--force`), merge your custom parts back and
+commit. To stop the toolkit managing a file: remove its `managed=` line from the lock.
 
-### 10.5 Dự án cài trước khi có lock
+### 10.5 Projects installed before the lock existed
 
-Script tự dò: đọc `@ref` trong `uses:`, sinh file của từng bản phát hành gần đây và chọn
-bản khớp với repo nhiều nhất (in `guessed: N identical files`). Chỉ caller có `uses:
-kokoroou/agent-toolkit/…` và file còn y nguyên được coi là toolkit quản lý. Chắc chắn hơn:
-chỉ rõ `--from v0.1.0` (và `--stack` nếu đã chọn stack khác bản nhận diện). File không xác
-định được bản gốc được giữ nguyên, bản mới đặt cạnh ở `<file>.upstream` để so sánh — gộp
-tay rồi xoá file `.upstream`. Sau lần nâng cấp đầu, lock được tạo và các lần sau không
-cần dò nữa.
+The script detects it: it reads `@ref` from `uses:`, regenerates the files of each recent
+release and picks the one matching the repo best (prints `guessed: N identical files`).
+Only callers with `uses: kokoroou/agent-toolkit/…` and files still identical are treated
+as toolkit-managed. To be sure, pass `--from v0.1.0` (and `--stack` if you chose a
+different stack than detected). Files whose origin cannot be determined are kept, with the
+new version placed next to them as `<file>.upstream` — merge by hand, then delete the
+`.upstream` file. After the first upgrade the lock exists and later runs need no guessing.
 
-## 11. Vận hành hằng ngày
+## 11. Day-to-day operation
 
-| Muốn | Làm |
+| You want to | Do |
 |---|---|
-| Giao việc cho agent | Mở issue bằng template; triage tự quyết |
-| Build một issue size L hoặc đã bị `needs-human` | Sửa issue cho rõ, bỏ nhãn `needs-human`, gắn **`agent:implement`** |
-| Triage lại issue | Gắn nhãn `needs-triage` hoặc *Actions → Agent Triage → Run workflow* |
-| Đổi yêu cầu | Sửa nội dung issue (nguồn sự thật là issue, không phải comment). Issue đang `needs-triage` / `awaiting-clarification` / `ready-for-plan` được triage lại tự động, vòng hỏi đếm lại từ 0 nếu triage trước đã kết luận. PR agent đang mở cho issue bị gắn `needs-human` → đóng PR, xoá branch, gắn `agent:implement` khi issue `ready-for-plan` trở lại |
-| Huỷ, không làm tiếp | Đóng issue. Triage và build bỏ qua; build đang chạy không push, không mở PR; PR đã mở không được fix, merge gate gắn `needs-human` thay vì merge. Đóng luôn PR nếu có |
-| Chặn một PR agent | Gắn `do-not-merge` (hoặc `risk:high`) |
-| Cho agent review PR của người | Gắn nhãn `agent` vào PR (PR sẽ đủ điều kiện auto-merge!) |
-| Tiếp tục sau `needs-human` trên PR | Tự sửa và push, bỏ nhãn; merge gate chạy lại khi CI xong |
-| Xem chi phí | Issue `pipeline-usage`, hoặc Step Summary của từng run |
+| Give the agent work | Open an issue from a template; triage decides |
+| Build a size-L issue or one marked `needs-human` | Clarify the issue, remove `needs-human`, add **`agent:implement`** |
+| Re-triage an issue | Add the `needs-triage` label or *Actions → Agent Triage → Run workflow* |
+| Change the requirements | Edit the issue body (the issue is the source of truth, not comments). Issues in `needs-triage` / `awaiting-clarification` / `ready-for-plan` are re-triaged automatically, and the round count restarts at 0 if the previous triage had concluded. An open agent PR for the issue gets `needs-human` → close the PR, delete the branch, add `agent:implement` once the issue is `ready-for-plan` again |
+| Cancel, stop the work | Close the issue. Triage and build skip it; a running build does not push or open a PR; an open PR is not fixed, and the merge gate adds `needs-human` instead of merging. Close the PR too if there is one |
+| Block an agent PR | Add `do-not-merge` (or `risk:high`) |
+| Have the agent review a human PR | Add the `agent` label to the PR (the PR becomes eligible for auto-merge!) |
+| Resume after `needs-human` on a PR | Fix and push yourself, remove the label; the merge gate reruns when CI finishes |
+| See costs | The `pipeline-usage` issue, or each run's Step Summary |
 
-## 12. Xử lý sự cố
+## 12. Troubleshooting
 
-| Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
+| Symptom | Common cause | Fix |
 |---|---|---|
-| Không workflow nào chạy khi mở issue | Caller không nằm trên default branch; Actions bị tắt | §7; *Settings → Actions → General* |
-| `Agent Merge Gate` không bao giờ chạy | File không ở default branch; tên CI không phải `CI` | §7; §2.3 |
-| Agent không mở được PR: `GitHub Actions is not permitted to create or approve pull requests` | Thiếu quyền ở §6 | Bật *Allow GitHub Actions to create and approve pull requests* |
-| Bước *Mint GitHub App token* lỗi | App chưa cài vào repo, sai App ID, private key thiếu dòng BEGIN/END | [GETTING-STARTED §5](GETTING-STARTED.md#5-tạo-github-app-cho-agent-khuyến-nghị-mạnh), đặt lại secret |
-| Lỗi xác thực Claude / `401` | Thiếu hoặc sai `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, OAuth token hết hạn | Tạo lại (`claude setup-token`), đặt lại secret |
-| PR agent không có check CI (không dùng App) | Bình thường: CI được dispatch riêng, xem trong Actions tab | Dùng App để check hiện trên PR |
-| CI báo `coverage-command must print the percentage on its last line` | Dòng cuối stdout của `coverage-command` không chứa số | Chuyển output khác sang `>&2` (§3.3) |
-| Agent thử lệnh bị từ chối (`permission denied` / tool not allowed trong transcript) | Lệnh thiếu trong `extra-allowed-tools` | Thêm vào cả `agent-implement.yml` và job `fix` |
-| Issue đã merge vẫn mở | Merge gate không chạy tới bước đóng; PR không có `Closes #N` | Kiểm tra log merge gate; đóng tay |
-| PR bị `needs-human` sau 3 lần fix | Circuit breaker | Đọc transcript `transcript-fix-*`, sửa tay hoặc làm rõ issue rồi gắn lại `agent:implement` |
-| Triage không phản hồi khi trả lời câu hỏi | Comment từ bot bị bỏ qua; issue không còn `awaiting-clarification` | Comment bằng tài khoản người; gắn lại `needs-triage` |
+| No workflow runs when opening an issue | Callers are not on the default branch; Actions disabled | §7; *Settings → Actions → General* |
+| `Agent Merge Gate` never runs | File not on the default branch; the CI is not named `CI` | §7; §2.3 |
+| The agent cannot open a PR: `GitHub Actions is not permitted to create or approve pull requests` | Missing permission from §6 | Enable *Allow GitHub Actions to create and approve pull requests* |
+| The *Mint GitHub App token* step fails | App not installed on the repo, wrong App ID, private key missing the BEGIN/END lines | [GETTING-STARTED §5](GETTING-STARTED.md#5-create-a-github-app-for-the-agent-strongly-recommended), reset the secrets |
+| Claude authentication error / `401` | Missing or wrong `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, expired OAuth token | Regenerate (`claude setup-token`), reset the secret |
+| The agent PR has no CI checks (no App) | Expected: CI is dispatched separately, see the Actions tab | Use an App so checks show on the PR |
+| CI says `coverage-command must print the percentage on its last line` | The last stdout line of `coverage-command` has no number | Send other output to `>&2` (§3.3) |
+| The agent tries a denied command (`permission denied` / tool not allowed in the transcript) | Command missing from `extra-allowed-tools` | Add it to both `agent-implement.yml` and the `fix` job |
+| A merged issue stays open | The merge gate did not reach the close step; the PR lacks `Closes #N` | Check the merge gate log; close it by hand |
+| PR gets `needs-human` after 3 fixes | Circuit breaker | Read the `transcript-fix-*` transcript, fix by hand or clarify the issue and add `agent:implement` again |
+| Triage does not respond to your answers | Bot comments are ignored; the issue is no longer `awaiting-clarification` | Comment from a human account; add `needs-triage` again |
 
-Vẫn không rõ: mở run bị lỗi → xem Step Summary và tải artifact `transcript-*`.
+Still unclear: open the failed run → check the Step Summary and download the
+`transcript-*` artifact.

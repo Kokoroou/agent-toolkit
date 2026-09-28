@@ -1,199 +1,221 @@
-# Bắt đầu với agent-toolkit (người dùng lần đầu)
+# Getting started with agent-toolkit (first-time users)
 
-Tài liệu này dành cho **người dùng GitHub lần đầu dùng agent-toolkit**: bạn muốn cho
-Claude Code tự triage issue, viết code, mở PR, review và merge trong các repo của mình.
-Bạn **không** cần fork hay sửa toolkit — chỉ cần chuẩn bị tài khoản một lần, sau đó
-thêm pipeline vào từng dự án theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md).
+**English** · [Tiếng Việt](GETTING-STARTED.vi.md)
 
-> Bạn đang bảo trì chính repo `kokoroou/agent-toolkit`? Xem [MAINTAINING.md](MAINTAINING.md).
+This guide is for **GitHub users trying agent-toolkit for the first time**: you want Claude
+Code to triage issues, write code, open PRs, review and merge in your repos by itself.
+You do **not** need to fork or modify the toolkit — just prepare your accounts once, then
+add the pipeline to each project with [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md).
 
-Mục lục:
+> Maintaining the `kokoroou/agent-toolkit` repo itself? See [MAINTAINING.md](MAINTAINING.md).
 
-1. [Pipeline làm gì](#1-pipeline-làm-gì)
-2. [Yêu cầu](#2-yêu-cầu)
-3. [Cài công cụ trên máy](#3-cài-công-cụ-trên-máy)
-4. [Chuẩn bị thông tin đăng nhập Claude](#4-chuẩn-bị-thông-tin-đăng-nhập-claude)
-5. [Tạo GitHub App cho agent](#5-tạo-github-app-cho-agent-khuyến-nghị-mạnh)
-6. [PAT cho GitHub Projects](#6-pat-cho-github-projects-tuỳ-chọn)
-7. [Dùng plugin khi làm việc tay](#7-dùng-plugin-khi-làm-việc-tay-tuỳ-chọn)
-8. [Chạy thử trên repo sandbox](#8-chạy-thử-trên-repo-sandbox)
-9. [Chi phí và giới hạn](#9-chi-phí-và-giới-hạn)
+**Summary — one-time tasks (~15 min):**
+
+| # | Task | Required? | Section |
+|---|---|---|---|
+| 1 | Install `gh`, sign in with `gh auth login` | ✔ (the installer offers to do it) | [§3](#3-install-tools-on-your-machine) |
+| 2 | Get a Claude token: `claude setup-token` (Pro/Max plan) **or** an API key | ✔ | [§4](#4-get-your-claude-credentials) |
+| 3 | Create a GitHub App, note the App ID + `.pem` file, install the App on your repos | strongly recommended | [§5](#5-create-a-github-app-for-the-agent-strongly-recommended) |
+| 4 | Classic PAT for GitHub Projects | optional | [§6](#6-pat-for-github-projects-optional) |
+| 5 | Try it on a sandbox repo before a real project | recommended | [§8](#8-try-it-on-a-sandbox-repo) |
+
+Then move on to [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) — usually a single command. Terms
+(triage, merge gate, `needs-human`…): [README](../README.md#glossary).
+
+Contents:
+
+1. [What the pipeline does](#1-what-the-pipeline-does)
+2. [Requirements](#2-requirements)
+3. [Install tools on your machine](#3-install-tools-on-your-machine)
+4. [Get your Claude credentials](#4-get-your-claude-credentials)
+5. [Create a GitHub App for the agent](#5-create-a-github-app-for-the-agent-strongly-recommended)
+6. [PAT for GitHub Projects](#6-pat-for-github-projects-optional)
+7. [Use the plugin by hand](#7-use-the-plugin-by-hand-optional)
+8. [Try it on a sandbox repo](#8-try-it-on-a-sandbox-repo)
+9. [Costs and limits](#9-costs-and-limits)
 
 ---
 
-## 1. Pipeline làm gì
+## 1. What the pipeline does
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
 ```
 
-- Bạn mở issue theo template (Goal / Constraints / Acceptance criteria).
-- **Triage** đọc issue, hỏi lại tối đa 5 vòng nếu thiếu thông tin hoặc chưa rõ ý định, rồi gắn nhãn
-  `type:*`, `priority:*`, `risk:*`, `size:*`.
-- Issue đủ ý, `risk` khác `high` và `size` ≤ M → **build agent** tạo branch
-  `agent/issue-N`, lập kế hoạch, viết code + test, mở PR vào `develop`.
-- **CI** (lint, format, test, coverage không giảm, Semgrep, Gitleaks) và **reviewer
-  agent** chạy trên PR.
-- **Merge gate** squash-merge PR xanh vào `develop`; PR đỏ được gửi lại build agent
-  sửa (tối đa 3 lần), sau đó dừng với nhãn `needs-human`.
-- Bạn tự merge `develop` → `main`; release-please tạo version, CHANGELOG và GitHub Release.
+- You open an issue from the template (Goal / Constraints / Acceptance criteria).
+- **Triage** reads the issue, asks back for up to 5 rounds if information is missing or the
+  intent is unclear, then labels it `type:*`, `priority:*`, `risk:*`, `size:*`.
+- A clear issue with `risk` other than `high` and `size` ≤ M → the **build agent** creates
+  branch `agent/issue-N`, plans, writes code + tests and opens a PR into `develop`.
+- **CI** (lint, format, test, no coverage drop, Semgrep, Gitleaks) and the **reviewer
+  agent** run on the PR.
+- The **merge gate** squash-merges green PRs into `develop`; red PRs go back to the build
+  agent for a fix (up to 3 times), after which it stops with the `needs-human` label.
+- You merge `develop` → `main` yourself; release-please creates the version, CHANGELOG and
+  GitHub Release.
 
-Repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit (`uses: kokoroou/agent-toolkit/...@v0`),
-nên toàn bộ logic được cập nhật từ một nơi. Chi tiết thiết kế: [ARCHITECTURE.md](ARCHITECTURE.md).
+A project repo only keeps a few thin YAML files calling into the toolkit
+(`uses: kokoroou/agent-toolkit/...@v0`), so all the logic is updated from one place.
+Design details: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## 2. Yêu cầu
+## 2. Requirements
 
-| Thứ cần có | Ghi chú |
+| You need | Notes |
 |---|---|
-| Tài khoản GitHub (gói Free là đủ) | Repo dự án có thể private. Toolkit tự thay branch protection bằng merge gate. |
-| Quyền **admin** trên repo dự án | Để thêm secret, sửa Settings → Actions, tạo nhãn và branch. |
-| Tài khoản Anthropic | API key (trả theo token) **hoặc** gói Claude Pro/Max (dùng OAuth token). |
-| Phút GitHub Actions | Repo private trên gói Free có 2 000 phút/tháng; mỗi issue tốn khoảng vài chục phút (xem [§9](#9-chi-phí-và-giới-hạn)). |
-| Máy có `git` và GitHub CLI `gh` | Linux, macOS, WSL hoặc Windows. Lệnh cài một bước ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#cài-bằng-một-lệnh)) tự đề nghị cài nếu thiếu. |
+| A GitHub account (Free plan is enough) | Project repos can be private. The toolkit replaces branch protection with its merge gate. |
+| **Admin** rights on the project repo | To add secrets, edit Settings → Actions, create labels and branches. |
+| An Anthropic account | An API key (pay per token) **or** a Claude Pro/Max plan (via an OAuth token). |
+| GitHub Actions minutes | Private repos on Free get 2,000 min/month; each issue costs a few dozen minutes (see [§9](#9-costs-and-limits)). |
+| A machine with `git` and GitHub CLI `gh` | Linux, macOS, WSL or Windows. The one-command installer ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#one-command-install)) offers to install them if missing. |
 
-## 3. Cài công cụ trên máy
+## 3. Install tools on your machine
 
-Lệnh cài một bước ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#cài-bằng-một-lệnh)) tự kiểm tra
-và đề nghị cài `git`, `gh` rồi chạy `gh auth login`; phần dưới là cách làm tay.
+The one-command installer ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#one-command-install)) checks
+for `git` and `gh`, offers to install them and runs `gh auth login`; below is the manual way.
 
 ```bash
-# GitHub CLI — dùng để tạo nhãn, branch develop, secret và settings
+# GitHub CLI — used to create labels, the develop branch, secrets and settings
 # macOS: brew install gh      Ubuntu/Debian: sudo apt install gh      Windows: winget install GitHub.cli
-gh auth login            # chọn GitHub.com → HTTPS → đăng nhập bằng trình duyệt
-gh auth status           # kiểm tra: phải thấy "Logged in to github.com" và scope "repo"
+gh auth login            # choose GitHub.com → HTTPS → sign in with the browser
+gh auth status           # check: you should see "Logged in to github.com" and the "repo" scope
 
-# Claude Code CLI — cần cho OAuth token (§4) và để dùng plugin khi làm tay (§7)
+# Claude Code CLI — needed for the OAuth token (§4) and the plugin for manual work (§7)
 npm install -g @anthropic-ai/claude-code
 claude --version
 ```
 
-Tuỳ chọn, chỉ khi muốn thêm agent quan sát CI (ci-doctor):
+Optional, only if you want the CI-watching agent (ci-doctor):
 
 ```bash
 gh extension install github/gh-aw
 ```
 
-## 4. Chuẩn bị thông tin đăng nhập Claude
+## 4. Get your Claude credentials
 
-Các workflow agent cần **một trong hai** secret sau (bạn sẽ thêm vào từng repo dự án ở
-bước sau, giờ chỉ cần lấy giá trị):
+The agent workflows need **one of** these two secrets (you will add it to each project repo
+later; for now just get the value):
 
-| Secret | Lấy ở đâu | Khi nào chọn |
+| Secret | Where to get it | When to choose it |
 |---|---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | Chạy `claude setup-token` trên máy, đăng nhập bằng tài khoản Claude Pro/Max, copy token in ra | Bạn có gói Claude: dùng hạn mức gói, không tính tiền API. |
-| `ANTHROPIC_API_KEY` | [Claude Console → API keys](https://platform.claude.com/settings/keys) → *Create Key* (Console đã chuyển từ `console.anthropic.com` sang `platform.claude.com`; link cũ vẫn tự chuyển hướng) | Không có gói Claude, hoặc cần chi phí tách bạch theo API. Nên đặt *spend limit* trong Console. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Run `claude setup-token` on your machine, sign in with your Claude Pro/Max account, copy the printed token | You have a Claude plan: uses your plan's quota, no API billing. |
+| `ANTHROPIC_API_KEY` | [Claude Console → API keys](https://platform.claude.com/settings/keys) → *Create Key* (the Console moved from `console.anthropic.com` to `platform.claude.com`; old links still redirect) | No Claude plan, or you want separate API billing. Set a *spend limit* in the Console. |
 
-Lưu giá trị ở nơi an toàn (password manager). Không commit vào repo.
+Keep the value somewhere safe (a password manager). Never commit it to a repo.
 
-## 5. Tạo GitHub App cho agent (khuyến nghị mạnh)
+## 5. Create a GitHub App for the agent (strongly recommended)
 
-**Vì sao cần:** GitHub không cho sự kiện tạo bằng `GITHUB_TOKEN` (push, mở PR, gắn nhãn,
-merge) kích hoạt workflow khác. Không có App, toolkit vẫn chạy nhờ đường vòng
-`workflow_dispatch`, nhưng:
+**In short:** with an App, agent PRs show CI checks and everything runs as if a real person
+pushed. Do it once, use it for every repo: [open the pre-filled link](#51-create-the-app) →
+name it → *Create* → note the App ID + download a private key → *Install* on your repos.
 
-- check CI không hiện trực tiếp trên PR như PR thường;
-- CI/smoke sau merge phải được dispatch thủ công bởi toolkit;
-- release PR không tự chạy CI.
+**Why:** GitHub does not let events created with `GITHUB_TOKEN` (push, opening a PR,
+labeling, merging) trigger other workflows. Without an App the toolkit still works through
+`workflow_dispatch` workarounds, but:
 
-Có App thì mọi thứ chạy như khi một người thật push. Một App dùng chung được cho mọi
-repo của bạn.
+- CI checks do not show directly on the PR like on a normal PR;
+- post-merge CI/smoke has to be dispatched by the toolkit;
+- release PRs do not run CI automatically.
 
-### 5.1 Tạo App
+With an App everything runs as when a real person pushes. One App can be shared by all
+your repos.
 
-1. Mở [trang tạo App điền sẵn cấu hình](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write).
-   Link này đã điền Homepage URL, bỏ tick Webhook, chọn sẵn các quyền ở bước 3 và
-   *Only on this account*; bạn chỉ cần đặt tên rồi kiểm tra lại các bước dưới. Nếu tự vào:
-   **ảnh đại diện → Settings → Developer settings → GitHub Apps → New GitHub App**.
-   Với organization, dùng `https://github.com/organizations/<ORG>/settings/apps/new` kèm
-   cùng phần query phía sau dấu `?`.
-2. Điền:
-   - **GitHub App name**: tên duy nhất, ví dụ `kokoroou-agent`. Tên này sẽ hiện là tác
-     giả của commit/PR (`kokoroou-agent[bot]`).
-   - **Homepage URL**: URL bất kỳ, ví dụ `https://github.com/kokoroou/agent-toolkit`.
-   - **Webhook**: bỏ tick *Active* (toolkit không dùng webhook).
-3. **Repository permissions** (các quyền khác để *No access*):
+### 5.1 Create the App
 
-   | Quyền | Mức | Dùng để |
+1. Open the [pre-filled App creation page](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write).
+   It fills in the Homepage URL, unticks Webhook, selects the permissions from step 3 and
+   *Only on this account*; you only need to pick a name and double-check the steps below.
+   To go there manually: **avatar → Settings → Developer settings → GitHub Apps → New GitHub App**.
+   For an organization, use `https://github.com/organizations/<ORG>/settings/apps/new`
+   with the same query string after the `?`.
+2. Fill in:
+   - **GitHub App name**: a unique name, e.g. `kokoroou-agent`. It shows up as the author
+     of commits/PRs (`kokoroou-agent[bot]`).
+   - **Homepage URL**: any URL, e.g. `https://github.com/kokoroou/agent-toolkit`.
+   - **Webhook**: untick *Active* (the toolkit does not use webhooks).
+3. **Repository permissions** (leave the rest at *No access*):
+
+   | Permission | Level | Used to |
    |---|---|---|
    | Contents | Read and write | push branch `agent/issue-N`, merge |
-   | Pull requests | Read and write | mở PR, sửa nhãn, merge |
-   | Issues | Read and write | comment, gắn nhãn, đóng issue |
-   | Actions | Read and write | dispatch workflow, đọc log CI cho vòng fix |
-   | Workflows | Read and write | chỉ cần nếu agent có thể sửa file trong `.github/workflows/` |
-   | Metadata | Read-only | bắt buộc (tự chọn) |
+   | Pull requests | Read and write | open PRs, edit labels, merge |
+   | Issues | Read and write | comment, label, close issues |
+   | Actions | Read and write | dispatch workflows, read CI logs for the fix loop |
+   | Workflows | Read and write | only if the agent may edit files in `.github/workflows/` |
+   | Metadata | Read-only | required (selected automatically) |
 
 4. **Where can this GitHub App be installed?** → *Only on this account*.
-5. Bấm **Create GitHub App**.
+5. Click **Create GitHub App**.
 
-### 5.2 Lấy App ID và private key
+### 5.2 Get the App ID and private key
 
-1. Ở trang App vừa tạo, ghi lại **App ID** (một số, ở mục *About*). Đây là giá trị của
-   secret `AGENT_APP_ID`.
-2. Cuộn xuống **Private keys → Generate a private key**. Trình duyệt tải về file `.pem`.
-   **Toàn bộ nội dung file** (kể cả dòng `-----BEGIN ... KEY-----` và `-----END ... KEY-----`)
-   là giá trị của secret `AGENT_APP_PRIVATE_KEY`.
+1. On the new App's page, note the **App ID** (a number, under *About*). This is the value
+   of the `AGENT_APP_ID` secret.
+2. Scroll to **Private keys → Generate a private key**. The browser downloads a `.pem` file.
+   **The whole file content** (including the `-----BEGIN ... KEY-----` and
+   `-----END ... KEY-----` lines) is the value of the `AGENT_APP_PRIVATE_KEY` secret.
 
    ```bash
-   cat ~/Downloads/kokoroou-agent.*.private-key.pem   # copy toàn bộ output
+   cat ~/Downloads/kokoroou-agent.*.private-key.pem   # copy the whole output
    ```
 
-3. Cất file `.pem` ở nơi an toàn hoặc xoá sau khi đã thêm secret; nếu lộ, vào lại trang
-   App để xoá key và tạo key mới.
+3. Keep the `.pem` file somewhere safe or delete it once the secret is added; if it leaks,
+   go back to the App page to delete the key and generate a new one.
 
-### 5.3 Cài App vào repo
+### 5.3 Install the App on your repos
 
-1. Trang App → **Install App** → chọn tài khoản của bạn → **Install**.
-2. Chọn *Only select repositories* và tick các repo dự án sẽ dùng pipeline (có thể thêm
-   repo sau ở [Installed GitHub Apps](https://github.com/settings/installations) → *Configure*).
+1. App page → **Install App** → choose your account → **Install**.
+2. Choose *Only select repositories* and tick the project repos that will use the pipeline
+   (you can add repos later under [Installed GitHub Apps](https://github.com/settings/installations) → *Configure*).
 
-> Token của App được tạo trong từng run và chỉ có hiệu lực với repo đang chạy, nên App
-> **phải được cài vào mọi repo dự án** có secret `AGENT_APP_ID`. Nếu thiếu, bước
-> *Mint GitHub App token* sẽ lỗi.
+> App tokens are minted per run and only valid for the running repo, so the App **must be
+> installed on every project repo** that has the `AGENT_APP_ID` secret. Otherwise the
+> *Mint GitHub App token* step fails.
 
-## 6. PAT cho GitHub Projects (tuỳ chọn)
+## 6. PAT for GitHub Projects (optional)
 
-Chỉ cần nếu muốn triage tự thêm issue vào một GitHub Project (v2) và điền `Priority`,
-`Size`. Project thuộc **tài khoản cá nhân** không nhận `GITHUB_TOKEN` hay token của App,
-nên cần **classic** PAT:
+Only needed if you want triage to add issues to a GitHub Project (v2) and fill in
+`Priority` and `Size`. Projects owned by a **personal account** accept neither
+`GITHUB_TOKEN` nor App tokens, so you need a **classic** PAT:
 
-1. Mở [trang tạo classic PAT điền sẵn](https://github.com/settings/tokens/new?scopes=repo,project&description=agent-toolkit%20projects)
-   (đã điền Note và tick sẵn scope), hoặc vào
+1. Open the [pre-filled classic PAT page](https://github.com/settings/tokens/new?scopes=repo,project&description=agent-toolkit%20projects)
+   (Note and scopes already filled), or go to
    **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → Generate new token (classic)**.
-2. Kiểm tra lại: Note `agent-toolkit projects`; Expiration tuỳ bạn (nhớ gia hạn); scopes **`repo`** và **`project`**.
-3. **Generate token** → copy token → sẽ dùng làm secret `PROJECT_TOKEN`.
+2. Double-check: Note `agent-toolkit projects`; Expiration as you like (remember to renew);
+   scopes **`repo`** and **`project`**.
+3. **Generate token** → copy it → it will be the `PROJECT_TOKEN` secret.
 
-> **Đừng dùng fine-grained token.** Nếu trang bạn đang mở có các mục *Repository access*
-> và *Permissions → Add permissions* thì đó là trang fine-grained. Loại token này chưa có
-> quyền ghi vào Project của tài khoản cá nhân, nên triage sẽ không thêm được issue vào
-> Project. Trang classic chỉ có một danh sách checkbox scope (`repo`, `workflow`,
-> `project`, ...).
+> **Do not use a fine-grained token.** If the page shows *Repository access* and
+> *Permissions → Add permissions*, it is the fine-grained page. Those tokens cannot yet
+> write to personal-account Projects, so triage would fail to add issues. The classic page
+> only has a list of scope checkboxes (`repo`, `workflow`, `project`, ...).
 
-## 7. Dùng plugin khi làm việc tay (tuỳ chọn)
+## 7. Use the plugin by hand (optional)
 
-Các sub-agent và lệnh mà pipeline dùng cũng dùng được trong Claude Code trên máy bạn:
+The sub-agents and commands the pipeline uses also work in Claude Code on your machine:
 
 ```bash
 claude plugin marketplace add kokoroou/agent-toolkit
 claude plugin install pipeline@agent-toolkit
 ```
 
-Trong Claude Code, đứng ở thư mục repo dự án (cần `gh auth login` để lệnh đọc được issue/PR):
+In Claude Code, from the project repo directory (`gh auth login` is needed so the commands
+can read issues/PRs):
 
-| Lệnh | Làm gì |
+| Command | What it does |
 |---|---|
-| `/pipeline:triage-issue 42` | Chấm điểm, phân loại issue #42, đề xuất câu hỏi làm rõ |
-| `/pipeline:plan-feature 42` | Lập kế hoạch theo file cho issue #42, không sửa code |
-| `/pipeline:implement-issue 42` | Planner → implementer trên branch hiện tại, commit (không push) |
-| `/pipeline:fix-pr 57 <file-log>` | Sửa PR #57 theo log CI / review, commit (không push) |
-| `/pipeline:review-pr 57` | Review PR #57, trả về verdict |
+| `/pipeline:triage-issue 42` | Score and classify issue #42, suggest clarifying questions |
+| `/pipeline:plan-feature 42` | Plan issue #42 file by file, no code changes |
+| `/pipeline:implement-issue 42` | Planner → implementer on the current branch, commit (no push) |
+| `/pipeline:fix-pr 57 <log-file>` | Fix PR #57 from a CI log / review, commit (no push) |
+| `/pipeline:review-pr 57` | Review PR #57 and return a verdict |
 
-Cập nhật plugin: `claude plugin marketplace update agent-toolkit`.
+Update the plugin: `claude plugin marketplace update agent-toolkit`.
 
-## 8. Chạy thử trên repo sandbox
+## 8. Try it on a sandbox repo
 
-Trước khi dùng cho dự án thật, nên thử toàn bộ vòng trên một repo nhỏ bỏ đi được.
+Before using it on a real project, try the whole loop on a small throwaway repo.
 
-### 8.1 Tạo sandbox
+### 8.1 Create the sandbox
 
 ```bash
 gh repo create agent-sandbox --private --clone && cd agent-sandbox
@@ -214,49 +236,50 @@ EOF
 printf 'node_modules/\ncoverage/\n' > .gitignore
 printf 'coverage/\n' > .prettierignore
 npm pkg set scripts.test="jest" scripts.lint="eslint src" scripts.build="echo no build"
-npx prettier --write . && npm run lint && npm test   # cả ba phải xanh trước khi bắt đầu
+npx prettier --write . && npm run lint && npm test   # all three must pass before you start
 git add -A && git commit -m "chore: initial sandbox" && git push -u origin HEAD
 ```
 
-Lệnh `smoke-command` mặc định trong template là
-`npm run build && npm test -- smoke` (mẫu đường dẫn dạng tham số vị trí — chạy được cả
-Jest 29 lẫn Jest 30, vốn đã bỏ `--testPathPattern`); với sandbox này hãy đổi thành
-`npm test` (hoặc thêm một file `test/smoke.test.js`).
+The template's default `smoke-command` is `npm run build && npm test -- smoke` (a
+positional path pattern — works with both Jest 29 and Jest 30, which dropped
+`--testPathPattern`); for this sandbox change it to `npm test` (or add a
+`test/smoke.test.js` file).
 
-Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) với repo này (template mặc định
-đã là Node + Jest nên gần như không phải sửa lệnh).
+Then follow [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) with this repo (the default template is
+already Node + Jest, so the commands need almost no changes).
 
-### 8.2 Kịch bản nên thử
+### 8.2 Scenarios to try
 
-| Kịch bản | Cách làm | Kỳ vọng |
+| Scenario | How | Expected |
 |---|---|---|
-| Issue thiếu thông tin | Mở issue *Feature* chỉ ghi Goal mơ hồ, Acceptance criteria "làm cho tốt" | Nhãn `awaiting-clarification` + ≤3 câu hỏi/vòng (Socratic, 5 Whys, 5W1H, ví dụ/phản ví dụ… tuỳ chỗ hổng). Trả lời bằng comment → triage chạy lại |
-| Không trả lời đủ | Trả lời lạc đề 5 lần | Nhãn `needs-human`, pipeline dừng |
-| Đổi yêu cầu | Sửa nội dung issue đã `ready-for-plan` | Triage chạy lại, đếm vòng hỏi từ 0; PR agent cũ (nếu có) bị gắn `needs-human` |
-| Huỷ | Đóng issue | Build đang chạy không push/mở PR; PR đã mở không được fix hay merge |
-| Issue đủ ý, size S | "slugify bỏ dấu tiếng Việt", kèm 2–3 acceptance criteria cụ thể | `ready-for-plan` → PR `agent/issue-N` có `Closes #N` |
-| PR xanh + review approve | Chờ CI và *Agent Review* xong | Merge gate squash vào `develop`, xoá branch, đóng issue |
-| PR đỏ | Đẩy thêm một commit làm hỏng test lên branch agent | Merge gate → `fix` → agent commit sửa; sau 3 lần → `needs-human` |
-| PR rủi ro cao | Gắn nhãn `risk:high` vào PR agent | Merge gate trả `blocked`, không merge |
-| Smoke fail sau merge | Đặt `smoke-command: "false"` trong `agent-merge-gate.yml` | Sau merge có PR `revert/pr-N` mang `needs-human` |
-| Release | Mở PR `develop` → `main` và merge | release-please mở release PR; merge nó → tag + GitHub Release |
+| Issue missing information | Open a *Feature* issue with only a vague Goal and Acceptance criteria "make it good" | Label `awaiting-clarification` + ≤3 questions per round (Socratic, 5 Whys, 5W1H, examples/counter-examples… depending on the gap). Reply with a comment → triage runs again |
+| Not enough answers | Reply off-topic 5 times | Label `needs-human`, the pipeline stops |
+| Changed requirements | Edit the body of an issue that is already `ready-for-plan` | Triage runs again, round count restarts at 0; the old agent PR (if any) gets `needs-human` |
+| Cancel | Close the issue | A running build does not push/open a PR; an open PR is neither fixed nor merged |
+| Clear issue, size S | "slugify strips Vietnamese diacritics", with 2–3 concrete acceptance criteria | `ready-for-plan` → PR `agent/issue-N` with `Closes #N` |
+| Green PR + approving review | Wait for CI and *Agent Review* to finish | The merge gate squashes into `develop`, deletes the branch, closes the issue |
+| Red PR | Push a commit that breaks a test onto the agent branch | Merge gate → `fix` → the agent commits a fix; after 3 times → `needs-human` |
+| High-risk PR | Add the `risk:high` label to an agent PR | The merge gate returns `blocked`, no merge |
+| Smoke fails after merge | Set `smoke-command: "false"` in `agent-merge-gate.yml` | After the merge a `revert/pr-N` PR appears with `needs-human` |
+| Release | Open a `develop` → `main` PR and merge it | release-please opens a release PR; merging it → tag + GitHub Release |
 
-### 8.3 Xem agent đã làm gì
+### 8.3 See what the agent did
 
-- **Actions → run → Summary**: quyết định của triage/gate, chi phí Claude, số lượt, thời gian.
-- **Artifacts** của run: `transcript-*` là toàn bộ hội thoại của Claude, tải về để soi.
-- Issue `pipeline-usage` (từ *Agent Usage Report*, hằng tuần hoặc chạy tay): tổng phút
-  Actions và chi phí Claude.
+- **Actions → run → Summary**: triage/gate decisions, Claude cost, turns, duration.
+- The run's **Artifacts**: `transcript-*` is Claude's full conversation, download it to inspect.
+- The `pipeline-usage` issue (from *Agent Usage Report*, weekly or run by hand): total
+  Actions minutes and Claude cost.
 
-## 9. Chi phí và giới hạn
+## 9. Costs and limits
 
-- **Phút Actions:** mỗi issue thường gồm triage (1–3 phút/vòng), build (5–45 phút),
-  CI, review (2–15 phút), merge gate. Giới hạn `timeout-minutes`/`max-turns` trong caller
-  workflow chặn run chạy quá lâu. Theo dõi bằng *Agent Usage Report*.
-- **Claude:** mặc định dùng model `sonnet`. Chi phí mỗi run nằm trong Step Summary.
-  Với API key, đặt spend limit ở Console; với OAuth token, run bị giới hạn bởi hạn mức gói.
-- **An toàn:** agent không cầm token push; mọi nhãn/merge/push do bash của workflow thực
-  hiện theo JSON Claude trả về. `risk:high` không bao giờ được tự build hay tự merge.
-  Mọi nhánh lỗi kết thúc bằng `needs-human`. Xem [ARCHITECTURE.md](ARCHITECTURE.md).
+- **Actions minutes:** each issue typically includes triage (1–3 min/round), build (5–45
+  min), CI, review (2–15 min) and the merge gate. `timeout-minutes`/`max-turns` in the
+  caller workflows stop runaway runs. Track it with *Agent Usage Report*.
+- **Claude:** the default model is `sonnet`. Each run's cost is in its Step Summary. With
+  an API key, set a spend limit in the Console; with an OAuth token, runs are capped by
+  your plan's quota.
+- **Safety:** agents never hold a push token; every label/merge/push is done by workflow
+  bash based on the JSON Claude returns. `risk:high` is never auto-built or auto-merged.
+  Every failure path ends with `needs-human`. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
-**Tiếp theo:** [thêm pipeline vào dự án](ADD-TO-PROJECT.md).
+**Next:** [add the pipeline to a project](ADD-TO-PROJECT.md).

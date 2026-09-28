@@ -1,12 +1,14 @@
-# Cài đặt — chọn tài liệu theo vai trò
+# Setup — pick a guide by role
 
-Hướng dẫn cài đặt được tách theo người đọc:
+**English** · [Tiếng Việt](SETUP.vi.md)
 
-| Bạn là | Đọc | Nội dung |
+The setup instructions are split by reader:
+
+| You are | Read | Contents |
 |---|---|---|
-| Người dùng GitHub lần đầu dùng agent-toolkit | [GETTING-STARTED.md](GETTING-STARTED.md) | Pipeline làm gì, công cụ cần cài, thông tin đăng nhập Claude, tạo GitHub App, PAT cho Projects, plugin khi làm tay, chạy thử trên sandbox, chi phí |
-| Người thêm pipeline vào một dự án | [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) | Bootstrap, sửa workflow theo stack (Node/Python/Go), `CLAUDE.md`, secrets, Settings, default branch, kiểm tra, Projects/Dependabot/ci-doctor/release, ghim & nâng cấp phiên bản, xử lý sự cố |
-| Người bảo trì repo `kokoroou/agent-toolkit` | [MAINTAINING.md](MAINTAINING.md) | Thiết lập repo toolkit, lint, quy trình thay đổi, thử trên sandbox, phát hành, breaking change |
+| A GitHub user trying agent-toolkit for the first time | [GETTING-STARTED.md](GETTING-STARTED.md) | What the pipeline does, tools to install, Claude credentials, creating the GitHub App, PAT for Projects, the plugin for manual work, sandbox trial, costs |
+| Adding the pipeline to a project | [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) | Bootstrap, adapting workflows to your stack (Node/Python/Go), `CLAUDE.md`, secrets, Settings, default branch, verification, Projects/Dependabot/ci-doctor/release, pinning & upgrading, troubleshooting |
+| A maintainer of `kokoroou/agent-toolkit` | [MAINTAINING.md](MAINTAINING.md) | Toolkit repo setup, lint, change process, sandbox testing, releases, breaking changes |
 
-Thiết kế và luồng chi tiết: [ARCHITECTURE.md](ARCHITECTURE.md). Đánh giá bảo mật và các
-công cụ quét: [SECURITY.md](SECURITY.md).
+Design and detailed flow: [ARCHITECTURE.md](ARCHITECTURE.md). Security review and
+scanning tools: [SECURITY.md](SECURITY.md).

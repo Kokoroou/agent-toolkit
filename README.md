@@ -1,60 +1,113 @@
 # agent-toolkit
 
-Pipeline agent-driven **issue → triage → build → PR → CI/review → auto-merge → release**
-cho repo GitHub Free (kể cả private), chạy bằng Claude Code trong GitHub Actions.
-Dùng chung cho mọi dự án: repo dự án chỉ giữ vài file YAML mỏng gọi vào đây.
+**English** · [Tiếng Việt](README.vi.md)
+
+**Let Claude Code handle your GitHub issues end to end: ask clarifying questions, write
+code + tests, open a PR, review and merge it — you just open issues and approve releases.**
+
+- Runs on **GitHub Free**, private repos included, using GitHub Actions.
+- Shared by every project: a project repo only keeps a few thin YAML files that call into
+  this toolkit, so upgrading one place updates every project.
+- Safe by default: agents never hold a write token, high-risk work is never auto-merged,
+  and every failure stops and waits for a person (the `needs-human` label).
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
             │                                          │                 │
-            └─ hỏi lại ≤5 vòng                         └─ fix ≤3 lần ────┴─ fail → needs-human / revert
+            └─ asks back ≤5 rounds                     └─ fix ≤3 times ──┴─ fail → needs-human / revert
 ```
 
-## Thành phần
+## Get started in 3 steps
 
-| Đường dẫn | Là gì |
+1. **One-time setup** (~15 min): a Claude token + a GitHub App →
+   [GETTING-STARTED §4–5](docs/GETTING-STARTED.md#4-get-your-claude-credentials).
+2. **Install into a project** — from your project's clone, run:
+
+   ```bash
+   # Linux / macOS / WSL
+   curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
+   ```
+
+   ```powershell
+   # Windows
+   irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
+   ```
+
+   The script detects your stack, copies the workflows, creates labels + the `develop`
+   branch, sets secrets, enables repo settings and commits; it only asks for what is missing.
+3. **Fill in `CLAUDE.md`, then open a small issue** and watch the whole loop run →
+   [ADD-TO-PROJECT §8](docs/ADD-TO-PROJECT.md#8-commit-and-verify).
+
+## What to read next
+
+| You want to | Read | Time |
+|---|---|---|
+| Understand what the pipeline does, prepare accounts, try it on a sandbox | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | 10 min |
+| Install into a project, adapt to your stack, upgrade, troubleshoot | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) | reference |
+| Understand the design, detailed flow, GitHub pitfalls | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 5 min |
+| Assess the security risks | [SECURITY.md](docs/SECURITY.md) | 5 min |
+| Change or release the toolkit itself | [MAINTAINING.md](docs/MAINTAINING.md) | maintainers |
+| History of the build-out and status of each item | [PLAN.md](docs/PLAN.md) | reference |
+
+## Glossary
+
+| Term | Meaning |
 |---|---|
-| [`plugins/pipeline/`](plugins/pipeline) | Plugin Claude Code: sub-agent `planner` / `implementer` / `reviewer`, lệnh `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skill `pipeline-conventions` |
-| [`.github/workflows/triage.yml`](.github/workflows/triage.yml) | Làm rõ, chấm điểm, gắn nhãn issue; thêm vào GitHub Projects |
-| [`.github/workflows/implement.yml`](.github/workflows/implement.yml) | Build agent: branch `agent/issue-N`, commit, PR; chế độ fix + circuit breaker |
-| [`.github/workflows/review.yml`](.github/workflows/review.yml) | Review PR, comment inline, commit status `agent/review` |
-| [`.github/workflows/quality.yml`](.github/workflows/quality.yml) | CI: lint → format → test → coverage không giảm, tiêu đề PR, Semgrep + Gitleaks |
-| [`.github/workflows/merge-gate.yml`](.github/workflows/merge-gate.yml) | Cổng merge tự viết (thay branch protection), smoke test + revert |
-| [`.github/workflows/release.yml`](.github/workflows/release.yml) | release-please + build + upload artifact |
-| [`.github/workflows/usage-report.yml`](.github/workflows/usage-report.yml) | Báo cáo phút Actions + chi phí Claude |
-| [`workflows/ci-doctor.md`](workflows/ci-doctor.md) | Workflow gh-aw: lỗi CI trên develop/main → issue |
-| [`templates/`](templates) | File chép vào repo dự án (caller workflow, issue template, nhãn, `CLAUDE.md`) |
-| [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | Cài pipeline vào một repo dự án bằng một lệnh (file, secret, settings, commit) |
-| [`scripts/upgrade.sh`](scripts/upgrade.sh) | Nâng cấp file đã chép trong repo dự án lên bản toolkit mới, giữ chỉnh sửa của bạn bằng 3-way merge |
-| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
+| **Triage** | An agent reads the issue, asks back if unclear, then labels type / priority / risk / size |
+| **Build agent** | An agent that plans (*planner*) then writes code + tests (*implementer*) on branch `agent/issue-N` |
+| **Reviewer** | An agent that reviews the PR, comments inline and records the verdict in the `agent/review` status |
+| **Merge gate** | A workflow that replaces branch protection: green PR → squash-merge; red PR → sent back for a fix |
+| **Circuit breaker** | Still red after 3 fixes → stop and add `needs-human` |
+| **`needs-human`** | "A person's turn" label: every agent skips issues/PRs that carry it |
+| **Caller workflow** | A thin YAML file in the project repo that calls a toolkit *reusable workflow* via `uses: …@v0` |
+| **`@v0`** | A moving tag pointing at the latest 0.x release; projects get fixes without changing anything |
 
-## Bắt đầu nhanh
+## Upgrading
 
-Lần đầu dùng? Đọc [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) rồi
-[docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md). Trong thư mục clone của repo dự án:
-
-```bash
-# Linux / macOS / WSL
-curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
-```
-
-```powershell
-# Windows
-irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
-```
-
-Script cài `gh` nếu thiếu, nhận diện stack, chép workflow, tạo nhãn + `develop`, đặt
-secret, bật settings của repo và commit; chỉ hỏi những gì chưa có (hoặc truyền bằng tham
-số / biến môi trường với `--yes`).
-
-Nâng cấp sau này (file đã chép + `@ref`, chỉnh sửa của bạn được giữ; xem
-[ADD-TO-PROJECT §10](docs/ADD-TO-PROJECT.md#10-ghim-và-nâng-cấp-phiên-bản-toolkit)):
+Pipeline logic updates itself through the `@v0` tag. Files copied into your project are
+upgraded with the command below (your edits are kept via a 3-way merge; details:
+[ADD-TO-PROJECT §10](docs/ADD-TO-PROJECT.md#10-pin-and-upgrade-the-toolkit-version)):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
 ```
 
-Một workflow trong repo dự án chỉ cần:
+## Using the plugin by hand
+
+The pipeline's agents also work in Claude Code on your machine, no workflows or secrets
+needed:
+
+```bash
+claude plugin marketplace add kokoroou/agent-toolkit
+claude plugin install pipeline@agent-toolkit
+# inside Claude Code: /pipeline:plan-feature 42
+```
+
+Command list: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-use-the-plugin-by-hand-optional).
+
+## What's in this repo
+
+<details>
+<summary>Component table (for readers of the code)</summary>
+
+| Path | What it is |
+|---|---|
+| [`plugins/pipeline/`](plugins/pipeline) | Claude Code plugin: sub-agents `planner` / `implementer` / `reviewer`, commands `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skill `pipeline-conventions` |
+| [`.github/workflows/triage.yml`](.github/workflows/triage.yml) | Clarify, score and label issues; add them to GitHub Projects |
+| [`.github/workflows/implement.yml`](.github/workflows/implement.yml) | Build agent: branch `agent/issue-N`, commit, PR; fix mode + circuit breaker |
+| [`.github/workflows/review.yml`](.github/workflows/review.yml) | Review PRs, inline comments, commit status `agent/review` |
+| [`.github/workflows/quality.yml`](.github/workflows/quality.yml) | CI: lint → format → test → no coverage drop, PR title, Semgrep + Gitleaks |
+| [`.github/workflows/merge-gate.yml`](.github/workflows/merge-gate.yml) | Home-made merge gate (replaces branch protection), smoke test + revert |
+| [`.github/workflows/release.yml`](.github/workflows/release.yml) | release-please + build + upload artifacts |
+| [`.github/workflows/usage-report.yml`](.github/workflows/usage-report.yml) | Actions minutes + Claude cost report |
+| [`workflows/ci-doctor.md`](workflows/ci-doctor.md) | gh-aw workflow: CI failures on develop/main → issue |
+| [`templates/`](templates) | Files copied into the project repo (caller workflows, issue templates, labels, `CLAUDE.md`) |
+| [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | One-command install into a project repo (files, secrets, settings, commit) |
+| [`scripts/upgrade.sh`](scripts/upgrade.sh) | Upgrade the copied files to a newer toolkit release, keeping your edits via 3-way merge |
+| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | The file copy + labels + `develop` part that `install.sh` uses |
+
+A caller workflow in a project repo looks like this (full versions in
+[`templates/.github/workflows/`](templates/.github/workflows)):
 
 ```yaml
 jobs:
@@ -62,30 +115,18 @@ jobs:
     uses: kokoroou/agent-toolkit/.github/workflows/triage.yml@v0
     with:
       issue-number: ${{ github.event.issue.number }}
-    secrets: inherit
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-Dùng plugin khi làm việc tay:
+</details>
+
+## Developing the toolkit
 
 ```bash
-claude plugin marketplace add kokoroou/agent-toolkit
-claude plugin install pipeline@agent-toolkit
-# trong Claude Code: /pipeline:plan-feature 42
+scripts/lint.sh   # needs claude, actionlint, shellcheck, jq
 ```
 
-## Tài liệu
-
-- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — lần đầu dùng: công cụ, thông tin đăng nhập Claude, GitHub App, thử trên repo sandbox
-- [docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) — thêm pipeline vào một dự án: bootstrap, sửa theo stack, secret, settings, ghim phiên bản, xử lý sự cố
-- [docs/MAINTAINING.md](docs/MAINTAINING.md) — bảo trì toolkit: phát triển, kiểm thử, phát hành
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — luồng chi tiết, nguyên tắc an toàn, các "bẫy" GitHub đã xử lý
-- [docs/PLAN.md](docs/PLAN.md) — kế hoạch thi công 9 giai đoạn và trạng thái từng mục
-
-## Phát triển toolkit
-
-```bash
-scripts/lint.sh   # cần claude, actionlint, shellcheck, jq
-```
-
-Commit theo Conventional Commits; `toolkit-release.yml` phát hành `vX.Y.Z` và dời tag `vX`.
-Chi tiết: [docs/MAINTAINING.md](docs/MAINTAINING.md).
+Use Conventional Commits; `toolkit-release.yml` publishes `vX.Y.Z` and moves the `vX` tag.
+Details: [docs/MAINTAINING.md](docs/MAINTAINING.md).
