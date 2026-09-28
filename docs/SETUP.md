@@ -11,8 +11,16 @@
    claude plugin install pipeline@agent-toolkit
    gh extension install github/gh-aw
    ```
-3. Tạo release đầu tiên: merge PR release-please mà `toolkit-release.yml` mở trên `main`
-   → tag `v0.x.y` và tag di động `v0`. (Khi lên 1.0.0 sẽ có `v1`.)
+3. **Trước lần push đầu tiên lên `main`**: Settings → Actions → General → Workflow
+   permissions → chọn *Read and write permissions* và tick *Allow GitHub Actions to
+   create and approve pull requests*. Thiếu bước này release-please chỉ tạo được nhánh
+   `release-please--…` mà không mở được PR (`GitHub Actions is not permitted to create
+   or approve pull requests`).
+4. Tạo release đầu tiên: merge PR release-please mà `toolkit-release.yml` mở trên `main`
+   → tag `v0.x.y`, GitHub Release và tag di động `v0`. (Khi lên 1.0.0 sẽ có `v1`.)
+   Chỉ merge PR do **github-actions** mở (có nhãn `autorelease: pending` và phần mô tả
+   do release-please sinh). Đừng tự mở PR từ nhánh `release-please--…`: release-please
+   không nhận ra PR đó nên sẽ không tạo tag/release khi merge.
 
 ## B. GitHub App cho agent (khuyến nghị mạnh)
 

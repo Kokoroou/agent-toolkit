@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0](https://github.com/Kokoroou/agent-toolkit/compare/agent-toolkit-v0.1.0...agent-toolkit-v0.2.0) (2026-09-28)
+## [0.2.0](https://github.com/Kokoroou/agent-toolkit/releases/tag/v0.2.0) (2026-09-28)
 
 
 ### Features
