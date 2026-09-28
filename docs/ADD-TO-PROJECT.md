@@ -303,7 +303,7 @@ bash -c '<coverage-command của bạn>' 2>/dev/null | tail -1   # vd: 84.61
 
 ### 3.4 Các tuỳ chỉnh khác thường dùng
 
-- `agent-triage.yml`: `max-rounds` (số vòng hỏi lại), `auto-implement-max-size`
+- `agent-triage.yml`: `max-rounds` (số vòng hỏi lại, 1–5, mặc định 5), `auto-implement-max-size`
   (`XS|S|M|L`; lớn hơn thì chờ người gắn `agent:implement`), bỏ `dispatch-on-ready`
   nếu muốn luôn tự quyết định issue nào được build.
 - `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` theo ngân sách của bạn.
@@ -556,6 +556,8 @@ cần dò nữa.
 | Giao việc cho agent | Mở issue bằng template; triage tự quyết |
 | Build một issue size L hoặc đã bị `needs-human` | Sửa issue cho rõ, bỏ nhãn `needs-human`, gắn **`agent:implement`** |
 | Triage lại issue | Gắn nhãn `needs-triage` hoặc *Actions → Agent Triage → Run workflow* |
+| Đổi yêu cầu | Sửa nội dung issue (nguồn sự thật là issue, không phải comment). Issue đang `needs-triage` / `awaiting-clarification` / `ready-for-plan` được triage lại tự động, vòng hỏi đếm lại từ 0 nếu triage trước đã kết luận. PR agent đang mở cho issue bị gắn `needs-human` → đóng PR, xoá branch, gắn `agent:implement` khi issue `ready-for-plan` trở lại |
+| Huỷ, không làm tiếp | Đóng issue. Triage và build bỏ qua; build đang chạy không push, không mở PR; PR đã mở không được fix, merge gate gắn `needs-human` thay vì merge. Đóng luôn PR nếu có |
 | Chặn một PR agent | Gắn `do-not-merge` (hoặc `risk:high`) |
 | Cho agent review PR của người | Gắn nhãn `agent` vào PR (PR sẽ đủ điều kiện auto-merge!) |
 | Tiếp tục sau `needs-human` trên PR | Tự sửa và push, bỏ nhãn; merge gate chạy lại khi CI xong |

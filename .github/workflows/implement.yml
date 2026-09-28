@@ -136,6 +136,7 @@ jobs:
       issue: ${{ steps.ctx.outputs.issue }}
       attempt: ${{ steps.ctx.outputs.attempt }}
       before: ${{ steps.ctx.outputs.before }}
+      issue-hash: ${{ steps.ctx.outputs.issue_hash }}
     env:
       HAS_APP: ${{ secrets.agent_app_id != '' }}
       MODE: ${{ inputs.mode }}
@@ -169,9 +170,11 @@ jobs:
           skip() { echo "status=$1" >>"$GITHUB_OUTPUT"; echo "skip=true" >>"$GITHUB_OUTPUT"; echo "$2"; exit 0; }
           if [[ "$MODE" == implement ]]; then
             [[ "$ISSUE" -gt 0 ]] || { echo "::error::issue-number is required"; exit 1; }
-            json=$(gh issue view "$ISSUE" --repo "$R" --json state,labels)
+            json=$(gh issue view "$ISSUE" --repo "$R" --json state,labels,title,body)
             [[ $(jq -r .state <<<"$json") == OPEN ]] || skip skipped "Issue #$ISSUE is not open."
             jq -e '[.labels[].name] | index("needs-human")' <<<"$json" >/dev/null && skip skipped "Issue #$ISSUE needs a human."
+            # Snapshot of the requirements; publish compares it to spot edits made mid-build.
+            echo "issue_hash=$(jq -r '.title + "\n" + (.body // "")' <<<"$json" | sha256sum | cut -d' ' -f1)" >>"$GITHUB_OUTPUT"
             branch="${PREFIX}${ISSUE}"
             pr=$(gh pr list --repo "$R" --head "$branch" --state open --json number --jq '.[0].number // empty')
             if [[ -n "$pr" ]]; then
@@ -194,6 +197,9 @@ jobs:
             branch=$(jq -r .headRefName <<<"$json")
             before=$(jq -r .headRefOid <<<"$json")
             ISSUE=$(jq -r '.body' <<<"$json" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo 0)
+            if [[ "$ISSUE" -gt 0 && $(gh issue view "$ISSUE" --repo "$R" --json state --jq .state) != OPEN ]]; then
+              skip skipped "Linked issue #$ISSUE is closed; not fixing PR #$PR."
+            fi
             attempts=$(jq --arg m "$MARKER_FIX" '[.comments[] | select(.body | contains($m))] | length' <<<"$json")
             echo "attempt=$((attempts + 1))" >>"$GITHUB_OUTPUT"
             echo "pr=$PR" >>"$GITHUB_OUTPUT"
@@ -397,6 +403,7 @@ jobs:
           LINKED_ISSUE: ${{ needs.prepare.outputs.issue }}
           ATTEMPT: ${{ needs.prepare.outputs.attempt }}
           BEFORE: ${{ needs.prepare.outputs.before }}
+          ISSUE_HASH: ${{ needs.prepare.outputs.issue-hash }}
           ALLOW_WF: ${{ inputs.allow-workflow-changes }}
           DISPATCH: ${{ inputs.ci-dispatch-workflow }}
           REVIEW_DISPATCH: ${{ inputs.review-dispatch-workflow }}
@@ -445,6 +452,18 @@ jobs:
             hand_to_human "The agent changed files in \`.github/workflows/\`, which needs \`allow-workflow-changes: true\`; nothing was pushed."
           fi
 
+          # The issue may have been closed, handed to a human or rewritten while the agent ran.
+          changed=false
+          if [[ "$MODE" == implement ]]; then
+            now=$(gh issue view "$ISSUE" --repo "$R" --json state,labels,title,body)
+            if [[ $(jq -r .state <<<"$now") != OPEN ]] || jq -e '[.labels[].name] | index("needs-human")' <<<"$now" >/dev/null; then
+              echo "status=skipped" >>"$GITHUB_OUTPUT"
+              echo "### implement → \`skipped\`: issue #$ISSUE was closed or handed to a human during the build; nothing pushed" >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            [[ $(jq -r '.title + "\n" + (.body // "")' <<<"$now" | sha256sum | cut -d' ' -f1) == "$ISSUE_HASH" ]] || changed=true
+          fi
+
           git push "https://x-access-token:${PUSH_TOKEN}@github.com/${R}.git" "$head:refs/heads/$BRANCH"
 
           if [[ "$MODE" == implement ]]; then
@@ -455,10 +474,15 @@ jobs:
             ensure agent 5319e7
             labels=(--label agent)
             if [[ "$risk" == high ]]; then ensure risk:high b60205; labels+=(--label risk:high); fi
-            draft=(); [[ "$status" == "done" ]] || draft=(--draft)
+            if [[ "$changed" == true ]]; then ensure needs-human d93f0b; labels+=(--label needs-human); fi
+            draft=(); [[ "$status" == "done" && "$changed" == false ]] || draft=(--draft)
             url=$(gh pr create --repo "$R" --base "$BASE" --head "$BRANCH" --title "$title" --body-file "$body" "${labels[@]}" "${draft[@]}")
             pr="${url##*/}"
-            gh issue comment "$ISSUE" --repo "$R" --body "🤖 Opened $url (status \`$status\`)." >/dev/null
+            if [[ "$changed" == true ]]; then
+              gh issue comment "$ISSUE" --repo "$R" --body "🤖 Opened $url, but #$ISSUE was edited while it was being built, so it may follow the old requirements. Labelled \`needs-human\`: review it, or close it and delete its branch, then add \`agent:implement\` to rebuild." >/dev/null
+            else
+              gh issue comment "$ISSUE" --repo "$R" --body "🤖 Opened $url (status \`$status\`)." >/dev/null
+            fi
           else
             pr="$PR"
             [[ "$risk" == high ]] && { ensure risk:high b60205; gh pr edit "$pr" --repo "$R" --add-label risk:high >/dev/null; }

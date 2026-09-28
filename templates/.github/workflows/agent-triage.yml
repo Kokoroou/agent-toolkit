@@ -47,7 +47,8 @@ jobs:
               if [[ "$ACTION" == labeled ]]; then
                 [[ "$LABEL" == needs-triage ]] && pick="[$ISSUE]"
               elif [[ "$ACTION" == edited ]]; then
-                { has needs-triage || has awaiting-clarification; } && pick="[$ISSUE]"
+                # Editing a ready issue changes its requirements: triage it again.
+                { has needs-triage || has awaiting-clarification || has ready-for-plan; } && pick="[$ISSUE]"
               else
                 pick="[$ISSUE]"
               fi ;;
@@ -72,7 +73,7 @@ jobs:
       actions: write
     with:
       issue-number: ${{ matrix.issue }}
-      max-rounds: 3
+      max-rounds: 5 # 1–5; questions follow the 5W (What/Why/Who/Where/When)
       dispatch-on-ready: agent-implement.yml
       auto-implement-max-size: M
       # project-owner: kokoroou

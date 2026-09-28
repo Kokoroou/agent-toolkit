@@ -8,7 +8,7 @@
 #   merged  – everything green → squash-merge, delete branch, close the linked issue
 #   fix     – a check failed on an agent PR → caller should run implement.yml mode=fix
 #   wait    – checks still pending / required status missing
-#   blocked – blocking label, conflict, bad title → left for a human
+#   blocked – blocking label, linked issue closed, conflict, bad title → left for a human
 #   skip    – not a PR this gate manages
 #
 # After a merge it runs an optional smoke test on the base branch and opens a revert PR
@@ -147,6 +147,14 @@ jobs:
           for b in "${blocks[@]}"; do
             [[ -n "$b" ]] && csv_has "$labels" "$b" && finish blocked "PR #$pr has label $b"
           done
+
+          # A closed linked issue means the work was cancelled: never merge (or fix) it.
+          if [[ -n "${issue:-}" ]] && [[ $(gh issue view "$issue" --repo "$R" --json state --jq .state) != OPEN ]]; then
+            gh label create needs-human --repo "$R" --color d93f0b >/dev/null 2>&1 || true
+            gh pr edit "$pr" --repo "$R" --add-label needs-human >/dev/null
+            gh pr comment "$pr" --repo "$R" --body "merge-gate: linked issue #$issue is closed, so this PR will not be merged. Close this PR, or reopen #$issue and remove \`needs-human\`." >/dev/null
+            finish blocked "linked issue #$issue is closed"
+          fi
 
           # --- check runs (GitHub Actions jobs and other apps) ---
           checks=$(gh api "repos/$R/commits/$SHA/check-runs?per_page=100" --paginate \
