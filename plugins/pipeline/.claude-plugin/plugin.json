@@ -7,5 +7,10 @@
   },
   "repository": "https://github.com/kokoroou/agent-toolkit",
   "license": "MIT",
-  "keywords": ["pipeline", "github-actions", "triage", "code-review"]
+  "keywords": [
+    "pipeline",
+    "github-actions",
+    "triage",
+    "code-review"
+  ]
 }
