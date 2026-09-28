@@ -65,7 +65,7 @@ chân X thì cần runner tự host có tường lửa egress (chỉ cho `api.an
 | 10 | Thấp | Template dùng `secrets: inherit` | **Đã sửa**: truyền đúng secret từng workflow cần |
 | 11 | Thấp | Agent có thể dùng WebFetch/WebSearch làm kênh ra ngoài | **Đã sửa**: `--disallowedTools WebFetch,WebSearch` ở mọi agent |
 | 12 | Thấp | `allowed-bots: "*"` | Giữ: phù hợp repo private (agent PR do bot tạo). Repo public nên đặt danh sách bot cụ thể |
-| 13 | — | `setup-command`/`smoke-command` nội suy vào `run:` | Chấp nhận (giá trị do chủ repo đặt), ignore tại chỗ cho zizmor |
+| 13 | Thấp | `setup-command`/`smoke-command`… nội suy thẳng vào `run:` (Semgrep `run-shell-injection`, zizmor `template-injection`) | **Đã sửa**: lệnh đi qua biến môi trường rồi `eval`, không nội suy vào script |
 | 14 | — | `agent-merge-gate.yml` dùng `workflow_run` | Chấp nhận: bỏ PR từ fork, kiểm head SHA, không checkout mã PR |
 
 ## Công cụ kiểm tra an ninh
