@@ -29,6 +29,34 @@ for stack in node pnpm yarn python go; do
   echo "-- $stack"; (cd "$d" && actionlint)
 done
 
+echo "== upgrade.sh: 3-way merge between two toolkit commits"
+gitc() { git -C "$1" -c user.name=lint -c user.email=lint@localhost "${@:2}"; }
+edit() { sed -i.bak "$1" "$2" && rm -f "$2.bak"; }
+tk="$tmp/upgrade-toolkit" p="$tmp/upgrade-project"
+mkdir -p "$tk" "$p" && git -C "$tk" init -q && git -C "$p" init -q
+cp -R scripts templates version.txt CHANGELOG.md "$tk/"
+gitc "$tk" add -A && gitc "$tk" commit -qm A
+"$tk/scripts/bootstrap.sh" "$p" --ref v9 --stack python --no-labels >/dev/null
+grep -qx 'stack=python' "$p/.github/agent-toolkit.lock"
+if grep -qx 'managed=CLAUDE.md' "$p/.github/agent-toolkit.lock"; then echo "CLAUDE.md must stay project-owned"; exit 1; fi
+edit 's/max-turns: 80/max-turns: 50/' "$p/.github/workflows/agent-implement.yml"   # local only
+edit 's/coverage-tolerance: "0"/coverage-tolerance: "1"/' "$p/.github/workflows/ci.yml" # both → conflict
+gitc "$p" add -A && gitc "$p" commit -qm install
+edit 's/description: Issue number/description: Issue to build/' "$tk/templates/.github/workflows/agent-implement.yml"
+edit 's/coverage-tolerance: "0"/coverage-tolerance: "2"/' "$tk/templates/.github/workflows/ci.yml"
+echo "# new" >"$tk/templates/.github/new-file.md"
+gitc "$tk" add -A && gitc "$tk" commit -qm B && git -C "$tk" tag v9.9.9
+if bash scripts/upgrade.sh "$p" --toolkit-dir "$tk" --to v9.9.9 --no-labels >"$tmp/upgrade.log"; then
+  cat "$tmp/upgrade.log"; echo "upgrade.sh: expected exit 1 on a conflict"; exit 1
+fi
+w="$p/.github/workflows"
+if ! { grep -q 'max-turns: 50' "$w/agent-implement.yml" && grep -q 'Issue to build' "$w/agent-implement.yml" \
+  && grep -q 'implement.yml@v9.9.9' "$w/agent-implement.yml" && grep -q '^<<<<<<< yours' "$w/ci.yml" \
+  && [[ -f "$p/.github/new-file.md" ]] && grep -qx 'ref=v9.9.9' "$p/.github/agent-toolkit.lock" \
+  && grep -qx 'managed=.github/new-file.md' "$p/.github/agent-toolkit.lock"; }; then
+  cat "$tmp/upgrade.log"; git -C "$p" diff; echo "upgrade.sh: unexpected result"; exit 1
+fi
+
 echo "== labels.json readable without jq (one object per line, as bootstrap.sh parses it)"
 parsed=$(sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description": *"\([^"]*\)".*/\1/p' templates/.github/labels.json | wc -l)
 [[ "$parsed" -eq "$(jq length templates/.github/labels.json)" ]] \
@@ -36,6 +64,6 @@ parsed=$(sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description
 
 echo "== Shell scripts"
 if command -v shellcheck >/dev/null; then shellcheck scripts/*.sh; else echo "shellcheck not installed; skipped"; fi
-bash -n scripts/install.sh
+for f in scripts/*.sh; do bash -n "$f"; done
 
 echo "OK"

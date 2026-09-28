@@ -25,6 +25,7 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 | [`workflows/ci-doctor.md`](workflows/ci-doctor.md) | Workflow gh-aw: lỗi CI trên develop/main → issue |
 | [`templates/`](templates) | File chép vào repo dự án (caller workflow, issue template, nhãn, `CLAUDE.md`) |
 | [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | Cài pipeline vào một repo dự án bằng một lệnh (file, secret, settings, commit) |
+| [`scripts/upgrade.sh`](scripts/upgrade.sh) | Nâng cấp file đã chép trong repo dự án lên bản toolkit mới, giữ chỉnh sửa của bạn bằng 3-way merge |
 | [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
 
 ## Bắt đầu nhanh
@@ -45,6 +46,13 @@ irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/instal
 Script cài `gh` nếu thiếu, nhận diện stack, chép workflow, tạo nhãn + `develop`, đặt
 secret, bật settings của repo và commit; chỉ hỏi những gì chưa có (hoặc truyền bằng tham
 số / biến môi trường với `--yes`).
+
+Nâng cấp sau này (file đã chép + `@ref`, chỉnh sửa của bạn được giữ; xem
+[ADD-TO-PROJECT §10](docs/ADD-TO-PROJECT.md#10-ghim-và-nâng-cấp-phiên-bản-toolkit)):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
+```
 
 Một workflow trong repo dự án chỉ cần:
 
