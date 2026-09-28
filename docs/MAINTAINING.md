@@ -152,6 +152,15 @@ Tự động bằng `toolkit-release.yml` mỗi khi push `main`:
 
 Lưu ý:
 
+- Chỉ commit `feat:`, `fix:` hoặc breaking change mới tạo release PR. Merge một PR chỉ
+  có `docs:`/`chore:`/`ci:`… thì run `toolkit-release` vẫn xanh, log ghi
+  `No user facing commits found … - skipping` và không có PR nào — đó là bình thường.
+- Release PR luôn đi từ nhánh `release-please--branches--main--components--agent-toolkit`
+  (dùng lại cho mọi version, force-push khi có commit mới). Tên này do release-please
+  **cố định trong code**, không cấu hình được, và release-please chỉ nhận ra PR đã merge
+  là release khi nhánh nguồn đúng định dạng của nó. Vì vậy **không đổi sang kiểu git flow
+  `release/X.Y.Z`**: PR từ nhánh như vậy khi merge sẽ không tạo tag hay GitHub Release.
+  Version nằm ở tiêu đề PR `chore(main): release X.Y.Z`.
 - Chỉ merge PR do **github-actions** mở (nhãn `autorelease: pending`, mô tả do
   release-please sinh). Đừng tự mở PR từ nhánh `release-please--…`: release-please không
   nhận ra PR đó nên sẽ không tạo tag/release khi merge.
