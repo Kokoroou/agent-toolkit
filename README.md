@@ -28,9 +28,12 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 
 ## Bắt đầu nhanh
 
+Lần đầu dùng? Đọc [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) rồi
+[docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md). Tóm tắt:
+
 ```bash
 git clone https://github.com/kokoroou/agent-toolkit /tmp/agent-toolkit
-/tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref main
+/tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref v0
 # sửa các khối "edit for your stack", thêm secret ANTHROPIC_API_KEY (+ GitHub App), commit
 ```
 
@@ -39,7 +42,7 @@ Một workflow trong repo dự án chỉ cần:
 ```yaml
 jobs:
   triage:
-    uses: kokoroou/agent-toolkit/.github/workflows/triage.yml@v1
+    uses: kokoroou/agent-toolkit/.github/workflows/triage.yml@v0
     with:
       issue-number: ${{ github.event.issue.number }}
     secrets: inherit
@@ -55,7 +58,9 @@ claude plugin install pipeline@agent-toolkit
 
 ## Tài liệu
 
-- [docs/SETUP.md](docs/SETUP.md) — cài đặt, secret, GitHub App, thử trên repo sandbox, ghim phiên bản
+- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — lần đầu dùng: công cụ, thông tin đăng nhập Claude, GitHub App, thử trên repo sandbox
+- [docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) — thêm pipeline vào một dự án: bootstrap, sửa theo stack, secret, settings, ghim phiên bản, xử lý sự cố
+- [docs/MAINTAINING.md](docs/MAINTAINING.md) — bảo trì toolkit: phát triển, kiểm thử, phát hành
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — luồng chi tiết, nguyên tắc an toàn, các "bẫy" GitHub đã xử lý
 - [docs/PLAN.md](docs/PLAN.md) — kế hoạch thi công 9 giai đoạn và trạng thái từng mục
 
@@ -66,3 +71,4 @@ scripts/lint.sh   # cần claude, actionlint, shellcheck, jq
 ```
 
 Commit theo Conventional Commits; `toolkit-release.yml` phát hành `vX.Y.Z` và dời tag `vX`.
+Chi tiết: [docs/MAINTAINING.md](docs/MAINTAINING.md).

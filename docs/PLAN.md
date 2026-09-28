@@ -7,7 +7,7 @@ Ký hiệu: ✅ đã có trong repo · 👤 bạn cần làm trên GitHub/máy (
 🔀 làm khác kế hoạch gốc, có lý do.
 
 ## Giai đoạn 0 — Nền tảng
-- 👤 Repo `kokoroou/agent-toolkit` để public → [SETUP §A](SETUP.md#a-một-lần-cho-toolkit-giai-đoạn-0)
+- 👤 Repo `kokoroou/agent-toolkit` để public → [MAINTAINING §2](MAINTAINING.md#2-thiết-lập-repo-một-lần)
 - 👤 `gh extension install github/gh-aw`
 - ✅ Khảo sát `githubnext/agentics`: `ci-doctor` được chuyển thể thành
   [`workflows/ci-doctor.md`](../workflows/ci-doctor.md) (engine claude, lỗi CI trên
@@ -29,7 +29,7 @@ Ký hiệu: ✅ đã có trong repo · 👤 bạn cần làm trên GitHub/máy (
   `implement.yml`, `review.yml`, `quality.yml`, `usage-report.yml`.
 - ✅ CI của toolkit: `self-test.yml` (manifest, actionlint + shellcheck, caller template
   kiểm tra chéo với input của reusable workflow, bootstrap thử).
-- 👤 Thử trên repo sandbox → [SETUP §D](SETUP.md#d-thử-nghiệm-trước-khi-dùng-thật-cuối-giai-đoạn-1)
+- 👤 Thử trên repo sandbox → [GETTING-STARTED §8](GETTING-STARTED.md#8-chạy-thử-trên-repo-sandbox)
 
 ## Giai đoạn 2 — Intake & triage
 - ✅ Issue template có cấu trúc (Goal / Constraints / Acceptance criteria), feature + bug.
