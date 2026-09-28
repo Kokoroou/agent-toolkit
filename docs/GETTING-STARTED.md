@@ -49,18 +49,18 @@ nên toàn bộ logic được cập nhật từ một nơi. Chi tiết thiết 
 | Quyền **admin** trên repo dự án | Để thêm secret, sửa Settings → Actions, tạo nhãn và branch. |
 | Tài khoản Anthropic | API key (trả theo token) **hoặc** gói Claude Pro/Max (dùng OAuth token). |
 | Phút GitHub Actions | Repo private trên gói Free có 2 000 phút/tháng; mỗi issue tốn khoảng vài chục phút (xem [§9](#9-chi-phí-và-giới-hạn)). |
-| Máy có `git`, `bash`, `jq` | Để chạy `scripts/bootstrap.sh`. Linux, macOS hoặc WSL. |
+| Máy có `git` và GitHub CLI `gh` | Linux, macOS, WSL hoặc Windows. Lệnh cài một bước ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#cài-bằng-một-lệnh)) tự đề nghị cài nếu thiếu. |
 
 ## 3. Cài công cụ trên máy
 
+Lệnh cài một bước ([ADD-TO-PROJECT](ADD-TO-PROJECT.md#cài-bằng-một-lệnh)) tự kiểm tra
+và đề nghị cài `git`, `gh` rồi chạy `gh auth login`; phần dưới là cách làm tay.
+
 ```bash
-# GitHub CLI — bootstrap dùng nó để tạo nhãn và branch develop
+# GitHub CLI — dùng để tạo nhãn, branch develop, secret và settings
 # macOS: brew install gh      Ubuntu/Debian: sudo apt install gh      Windows: winget install GitHub.cli
 gh auth login            # chọn GitHub.com → HTTPS → đăng nhập bằng trình duyệt
 gh auth status           # kiểm tra: phải thấy "Logged in to github.com" và scope "repo"
-
-# jq — bootstrap đọc labels.json
-# macOS: brew install jq      Ubuntu/Debian: sudo apt install jq
 
 # Claude Code CLI — cần cho OAuth token (§4) và để dùng plugin khi làm tay (§7)
 npm install -g @anthropic-ai/claude-code

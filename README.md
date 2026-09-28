@@ -24,18 +24,27 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 | [`.github/workflows/usage-report.yml`](.github/workflows/usage-report.yml) | Báo cáo phút Actions + chi phí Claude |
 | [`workflows/ci-doctor.md`](workflows/ci-doctor.md) | Workflow gh-aw: lỗi CI trên develop/main → issue |
 | [`templates/`](templates) | File chép vào repo dự án (caller workflow, issue template, nhãn, `CLAUDE.md`) |
-| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Cài pipeline vào một repo dự án |
+| [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | Cài pipeline vào một repo dự án bằng một lệnh (file, secret, settings, commit) |
+| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
 
 ## Bắt đầu nhanh
 
 Lần đầu dùng? Đọc [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) rồi
-[docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md). Tóm tắt:
+[docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md). Trong thư mục clone của repo dự án:
 
 ```bash
-git clone https://github.com/kokoroou/agent-toolkit /tmp/agent-toolkit
-/tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref v0
-# sửa các khối "edit for your stack", thêm secret ANTHROPIC_API_KEY (+ GitHub App), commit
+# Linux / macOS / WSL
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
 ```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
+```
+
+Script cài `gh` nếu thiếu, nhận diện stack, chép workflow, tạo nhãn + `develop`, đặt
+secret, bật settings của repo và commit; chỉ hỏi những gì chưa có (hoặc truyền bằng tham
+số / biến môi trường với `--yes`).
 
 Một workflow trong repo dự án chỉ cần:
 
