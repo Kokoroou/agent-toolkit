@@ -1,80 +1,100 @@
-# Đánh giá bảo mật agent-toolkit
+# Bảo mật agent-toolkit
 
 _Rà soát: 2026-09 · phạm vi: `.github/workflows/*`, `templates/`, `scripts/`, plugin `pipeline`._
 
-## Tóm tắt
+## Mô hình: Lethal Trifecta
 
-Thiết kế nền tảng khá tốt: quyền `permissions` khai báo tối thiểu theo từng job,
-`persist-credentials: false` ở mọi checkout, Claude không được `git push` (workflow tự
-push), triage chỉ trả về JSON có schema rồi workflow áp dụng một cách xác định, dữ liệu
-không tin cậy (tiêu đề PR, output của Claude) đi qua biến môi trường thay vì nội suy
-`${{ }}` vào script. Điểm yếu còn lại tập trung ở **job build (`implement.yml`)**: Claude
-chạy trên cùng runner, cùng job với token có quyền ghi.
+Một agent LLM trở nên nguy hiểm khi có **cùng lúc** ba thứ
+([Simon Willison](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/)):
+
+- **P — dữ liệu riêng tư / quyền đặc biệt**: mã nguồn private, secret, token có quyền ghi;
+- **U — nội dung không tin cậy**: issue, comment, diff PR, log CI — ai viết được là có
+  thể chèn lệnh vào prompt;
+- **X — kênh ra ngoài**: gọi mạng, hoặc hành động có tác dụng ngoài job (push, comment,
+  merge).
+
+Prompt injection không chặn được hoàn toàn bằng prompt, nên toolkit cắt ít nhất một
+chân của mỗi agent **bằng cấu hình**, không dựa vào việc model "biết từ chối".
+
+### Ma trận khả năng
+
+| Agent | P: agent thấy gì | U: đọc nội dung gì | X: agent tác động ra ngoài bằng gì | Chân bị cắt |
+|---|---|---|---|---|
+| Triage (`triage.yml`) | Repo (đọc), token đọc issue | Issue + comment (ai cũng viết được trên repo public) | **Không có**: chỉ trả JSON theo schema; bash áp nhãn/comment. Không có Bash tùy ý, WebFetch, WebSearch | **X** |
+| Review (`review.yml`) | Repo + PR (đọc) | Diff PR, mô tả PR | Chỉ inline comment trong PR + verdict JSON. Không chạy mã, không có mạng | **X** (chỉ còn kênh trong repo) |
+| Build (`implement.yml`, job `agent`) | Repo (đọc), token **chỉ đọc**, API key Claude | Issue/PR của **collaborator** (mặc định), log CI | Có mạng khi chạy lệnh dự án (`npm run`…), nhưng **không** có token ghi; commit ra ngoài chỉ qua bundle được `publish` kiểm tra | **U** (tác giả tin cậy) + **P** (không token ghi) |
+| Merge gate, publish, revert | Token ghi | Chỉ dữ liệu có cấu trúc | Merge, push | Không có LLM |
+
+Với **repo private**, mọi người viết issue/comment đều là collaborator, nên các giới hạn
+trên không đổi gì trong vận hành hằng ngày — chúng chặn trường hợp repo public, tài khoản
+collaborator bị chiếm, hoặc nội dung độc hại lọt vào qua dependency/log.
+
+### Build agent: 3 job
+
+```
+prepare (token ghi, không chạy mã dự án)  → circuit breaker, branch, commit bắt đầu (SHA)
+agent   (token CHỈ ĐỌC)                   → setup dự án + Claude → git bundle + JSON
+publish (token ghi, runner sạch)          → kiểm tra bundle → push → PR
+```
+
+`publish` coi mọi thứ từ `agent` là dữ liệu không tin cậy: JSON phải đúng schema, bundle
+phải chỉ thêm commit nối tiếp đúng SHA mà `prepare` đã chọn, và không được sửa
+`.github/workflows/` nếu caller không đặt `allow-workflow-changes: true`. Mọi thứ agent
+(hoặc mã nó chạy) ghi lên runner — `.git/config`, hook, `$GITHUB_ENV`, `$GITHUB_PATH`,
+binary giả — nằm lại ở runner của job `agent`, không chạm tới job push.
+
+**Rủi ro còn lại (chấp nhận):** job `agent` vẫn có mạng (cần để `npm ci`, gọi API Claude),
+nên một agent bị điều khiển có thể gửi *mã nguồn* ra ngoài. Chân U được giảm bằng
+`auto-implement-trusted-only`; giữ `extra-allowed-tools` hẹp nhất có thể. Muốn cắt nốt
+chân X thì cần runner tự host có tường lửa egress (chỉ cho `api.anthropic.com`,
+`github.com`, registry gói).
+
+## Các phát hiện và trạng thái
 
 | # | Mức | Vấn đề | Trạng thái |
 |---|-----|--------|-----------|
-| 1 | Cao | `implement.yml`: bước Claude có `GH_TOKEN` (contents/actions **write**) trong env; `extra-allowed-tools` như `Bash(npm run:*)` + quyền `Edit` cho phép chạy mã tùy ý → prompt injection từ issue có thể lấy token | **Đề xuất** (xem dưới) |
-| 2 | Cao | `implement.yml`: bước publish chạy `git commit/push` với token sau khi agent có thể đã sửa `.git/config`, hook, `$GITHUB_ENV`, `$GITHUB_PATH` | **Đề xuất** (cùng cách sửa #1) |
-| 3 | Cao | Issue của người ngoài (repo public) được triage `ready` sẽ tự khởi động build agent có quyền ghi | **Đã sửa**: `auto-implement-trusted-only` (mặc định `true`) — chỉ OWNER/MEMBER/COLLABORATOR |
-| 4 | Trung bình | `merge-gate.yml`: smoke test chạy mã vừa merge trong job có `contents: write` + App token, rồi mở revert PR trên cùng runner | **Đã sửa**: tách job `smoke` (read-only) và `revert` (runner sạch) |
-| 5 | Trung bình | `quality.yml`: `GH_TOKEN` đặt ở mức job nên lệnh lint/test của dự án cũng nhận token | **Đã sửa**: chỉ bước so coverage nhận token |
-| 6 | Trung bình | `self-test.yml` tải script actionlint từ nhánh `main` (supply chain) | **Đã sửa**: tải từ tag phát hành, ghim phiên bản |
-| 7 | Trung bình | Action ghim theo tag (`@v5`), không theo SHA; tag có thể bị dời | **Đề xuất**: ghim SHA + Dependabot (đã thêm `.github/dependabot.yml` cho toolkit) |
-| 8 | Thấp | `allowed-bots: "*"` mặc định — ổn với repo private, rộng với repo public | **Đề xuất**: với repo public đặt danh sách bot cụ thể |
-| 9 | Thấp | Semgrep chạy image `semgrep/semgrep` không ghim phiên bản | **Đã sửa một phần**: cài bằng pipx, thêm input `semgrep-version` để ghim |
-| 10 | Thấp | Lệnh `setup-command`/`smoke-command` được nội suy thẳng vào `run:` (zizmor `template-injection`, 9 chỗ) | Chấp nhận: giá trị do chủ repo gọi workflow đặt, không phải dữ liệu người dùng |
-| 11 | Cao | Token GitHub App kế thừa **mọi** quyền của App (zizmor `github-app`) | **Đã sửa**: mỗi job xin đúng `permission-*` cần dùng; quyền *Workflows* chỉ xin khi `allow-workflow-changes: true` |
-| 12 | Trung bình | `toolkit-release.yml` lưu credential trong `.git/config` khi checkout (zizmor `artipacked`) | **Đã sửa**: `persist-credentials: false`, push bằng token tường minh |
-| 13 | Thấp | Template dùng `secrets: inherit` (zizmor `secrets-inherit`) — workflow được gọi thấy mọi secret của repo | **Đề xuất**: truyền tường minh `anthropic_api_key`, `agent_app_id`, … |
-| 14 | Thấp | `agent-merge-gate.yml` dùng `workflow_run` (zizmor `dangerous-triggers`) | Chấp nhận: gate bỏ qua PR từ fork, kiểm tra head SHA, không checkout mã PR |
+| 1 | Cao | Bước Claude của build agent có `GH_TOKEN` quyền ghi; `Bash(npm run:*)` + `Edit` = chạy mã tùy ý → lấy được token | **Đã sửa**: job `agent` chỉ có token đọc |
+| 2 | Cao | Bước push chạy sau khi agent có thể sửa `.git/config`, hook, `$GITHUB_ENV`, `$GITHUB_PATH` | **Đã sửa**: push ở job `publish` trên runner sạch, từ bundle đã kiểm tra |
+| 3 | Cao | Issue của người ngoài (repo public) được triage `ready` tự khởi động build agent | **Đã sửa**: `auto-implement-trusted-only` (mặc định `true`) |
+| 4 | Cao | Token GitHub App kế thừa **mọi** quyền của App | **Đã sửa**: mỗi job xin đúng `permission-*`; *Workflows* chỉ khi `allow-workflow-changes: true` |
+| 5 | Trung bình | Smoke test chạy mã vừa merge trong job có token ghi, revert PR trên cùng runner | **Đã sửa**: job `smoke` chỉ đọc, job `revert` riêng |
+| 6 | Trung bình | `quality.yml`: lệnh lint/test của dự án nhận `GH_TOKEN` | **Đã sửa**: chỉ bước so coverage nhận token |
+| 7 | Trung bình | Action ghim theo tag, tag có thể bị dời | **Đã sửa**: ghim SHA kèm comment phiên bản; Dependabot cập nhật |
+| 8 | Trung bình | `self-test.yml` tải script actionlint từ nhánh `main` | **Đã sửa**: tải từ tag phát hành |
+| 9 | Trung bình | `toolkit-release.yml` lưu credential khi checkout | **Đã sửa**: `persist-credentials: false`, push bằng token tường minh |
+| 10 | Thấp | Template dùng `secrets: inherit` | **Đã sửa**: truyền đúng secret từng workflow cần |
+| 11 | Thấp | Agent có thể dùng WebFetch/WebSearch làm kênh ra ngoài | **Đã sửa**: `--disallowedTools WebFetch,WebSearch` ở mọi agent |
+| 12 | Thấp | `allowed-bots: "*"` | Giữ: phù hợp repo private (agent PR do bot tạo). Repo public nên đặt danh sách bot cụ thể |
+| 13 | — | `setup-command`/`smoke-command` nội suy vào `run:` | Chấp nhận (giá trị do chủ repo đặt), ignore tại chỗ cho zizmor |
+| 14 | — | `agent-merge-gate.yml` dùng `workflow_run` | Chấp nhận: bỏ PR từ fork, kiểm head SHA, không checkout mã PR |
 
 ## Công cụ kiểm tra an ninh
 
 | Công cụ | Ở đâu | Kiểm tra gì |
 |---------|-------|-------------|
+| zizmor (chặn từ mức *medium*) | `self-test.yml`, cấu hình `.github/zizmor.yml` | Lỗ hổng GitHub Actions: template injection, quyền thừa, credential persistence, action không ghim SHA, action có lỗ hổng đã biết |
 | Gitleaks | `quality.yml` (dự án) + `self-test.yml` (toolkit) | Secret lọt vào lịch sử git |
 | Semgrep `p/default` | như trên | Lỗi bảo mật trong mã, chỉ báo phát hiện mới so với baseline |
-| zizmor | `self-test.yml` (report-only) | Lỗ hổng GitHub Actions: template injection, quyền thừa, `pull_request_target`, credential persistence, action không ghim, cache poisoning |
 | actionlint + shellcheck | `self-test.yml` | Cú pháp workflow, script nhúng |
-| Dependabot | `.github/dependabot.yml` (toolkit), `templates/.github/dependabot.yml` (dự án) | Cập nhật action / thư viện, cảnh báo CVE |
+| Dependabot | `.github/dependabot.yml`, `templates/.github/dependabot.yml` | Cập nhật action (kể cả SHA ghim) / thư viện, cảnh báo CVE |
 
-Lần chạy zizmor 1.30.1 sau các bản sửa: còn 35 `unpinned-uses` (#7), 9
-`template-injection` (#10), 8 `secrets-inherit` (#13), 1 `dangerous-triggers` (#14);
-không còn `github-app` và `artipacked`.
+## Thay đổi hành vi khi nâng cấp
 
-zizmor đang ở chế độ **report-only** vì một số phát hiện là có chủ đích (ví dụ #10).
-Sau khi rà các annotation, thêm file `.github/zizmor.yml` để bỏ qua các phát hiện đã chấp
-nhận rồi bỏ `|| echo …` trong `self-test.yml` để biến nó thành cổng chặn.
-
-## Đề xuất sửa #1 và #2: tách job build thành 3 job
-
-Hiện tại một job làm tất cả: đọc context → cài dependency → Claude → push/mở PR. Mọi
-thứ agent (hoặc mã agent viết) chạy đều có thể đọc token ghi và sửa môi trường của bước
-push. Cách sửa triệt để (giống mô hình "safe outputs"):
-
-1. **`prepare`** (quyền ghi, không chạy mã dự án): circuit breaker, nhãn, tính branch.
-2. **`agent`** (`contents: read`, `issues: read`, `pull-requests: read`, `actions: read`):
-   checkout, `setup-command`, Claude. Kết quả là `git bundle` các commit mới + JSON
-   structured output, upload thành artifact. Không có token ghi nào trên runner này.
-3. **`publish`** (quyền ghi, runner sạch): checkout base, `git fetch` từ bundle, kiểm tra
-   bundle chỉ chứa commit nối tiếp `before` và không sửa `.github/workflows/**` (trừ khi
-   được phép), rồi push + mở PR như hiện nay.
-
-Cho tới khi làm việc này, nên: dùng GitHub App (token cấp theo repo, dễ thu hồi), giữ
-`extra-allowed-tools` ở mức hẹp nhất có thể (tránh `Bash(npm run:*)` nếu không cần), và
-để `auto-implement-trusted-only: true`.
-
-**Thay đổi hành vi:** trước đây token App mang cả quyền *Workflows* nếu App có quyền đó.
-Giờ agent chỉ push được thay đổi trong `.github/workflows/` khi caller đặt
-`allow-workflow-changes: true` cho `implement.yml` (cả ở `agent-implement.yml` và job
-`fix` của `agent-merge-gate.yml`).
+- Agent chỉ push được thay đổi trong `.github/workflows/` khi caller đặt
+  `allow-workflow-changes: true` (ở `agent-implement.yml` và job `fix` của
+  `agent-merge-gate.yml`); nếu không, run dừng với nhãn `needs-human`.
+- Issue do người không phải collaborator mở không được tự implement (repo private không
+  bị ảnh hưởng). Tắt bằng `auto-implement-trusted-only: false`.
+- Caller template truyền secret theo tên: `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+  `AGENT_APP_ID`, `AGENT_APP_PRIVATE_KEY`, `PROJECT_TOKEN` — đúng các tên `install.sh` đặt —
+  và `GITLEAKS_LICENSE` (tự thêm nếu repo thuộc organization). Dự án đã cài có thể giữ `secrets: inherit`; cả hai cách
+  đều chạy.
 
 ## Node 24 trên GitHub Actions
 
-GitHub chuyển runtime của JavaScript action từ Node 20 sang Node 24. Các action đã được
-nâng lên bản chạy Node 24: `actions/checkout@v5`, `actions/setup-node@v5`,
-`actions/upload-artifact@v5`, `actions/create-github-app-token@v3`,
-`googleapis/release-please-action@v5`, `gitleaks/gitleaks-action@v3`.
-`anthropics/claude-code-action@v1` là composite action nên không bị ảnh hưởng.
-Template mặc định chuyển `npm test -- --testPathPattern=smoke` thành `npm test -- smoke`
-vì Jest 30 đã bỏ cờ `--testPathPattern`.
+Mọi JavaScript action đã dùng bản chạy Node 24: `actions/checkout` v5, `setup-node` v5,
+`upload-artifact` v6, `download-artifact` v7, `create-github-app-token` v3,
+`release-please-action` v5, `gitleaks-action` v3 (`upload-artifact` v5 và
+`download-artifact` v5/v6 vẫn là Node 20). `anthropics/claude-code-action` là composite
+action, bên trong dùng `oven-sh/setup-bun` v2.2.0 (Node 24). Lệnh smoke mặc định dùng
+`npm test -- smoke` vì Jest 30 đã bỏ cờ `--testPathPattern`.

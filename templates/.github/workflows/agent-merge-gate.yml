@@ -4,7 +4,7 @@
 name: Agent Merge Gate
 
 on:
-  workflow_run:
+  workflow_run: # zizmor: ignore[dangerous-triggers] forks skipped, head SHA checked, PR code never checked out
     workflows: [CI, Agent Review]
     types: [completed]
 
@@ -31,7 +31,10 @@ jobs:
       setup-command: npm ci
       smoke-command: npm run build && npm test -- smoke
       ci-dispatch-workflow: ci.yml
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 
   fix:
     needs: gate
@@ -54,4 +57,9 @@ jobs:
       extra-allowed-tools: "Bash(npm ci),Bash(npm run:*),Bash(npm test:*),Bash(npx jest:*),Bash(npx prettier:*),Bash(npx eslint:*),Bash(npx tsc:*)"
       ci-dispatch-workflow: ci.yml
       review-dispatch-workflow: agent-review.yml
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}

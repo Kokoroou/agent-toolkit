@@ -67,7 +67,7 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
@@ -75,7 +75,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
           token: ${{ steps.app.outputs.token || github.token }}
@@ -92,15 +92,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
           persist-credentials: false
       - name: Setup
         if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }}
+        run: ${{ inputs.setup-command }} # zizmor: ignore[template-injection] caller-owned command
       - name: Build
-        run: ${{ inputs.build-command }}
+        run: ${{ inputs.build-command }} # zizmor: ignore[template-injection] caller-owned command
       - name: Upload artifacts to the release
         if: inputs.artifact-paths != ''
         env:

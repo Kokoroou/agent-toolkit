@@ -48,9 +48,10 @@ và `usage-report.yml` cập nhật hằng tuần một issue tổng hợp phút
 1. **Claude quyết định, workflow thực thi.** Triage và review trả JSON theo
    `--json-schema`; nhãn, comment, merge, push đều do bash xác định. Một issue bị
    prompt-injection tối đa chỉ chọn sai nhãn — giống mô hình *safe-outputs* của gh-aw.
-2. **Agent không cầm token push.** `actions/checkout` với `persist-credentials: false`,
-   `git push`/`git remote`/`git config`/`git reset`… nằm trong `--disallowedTools`.
-   Push và tạo PR là bước riêng sau khi Claude kết thúc.
+2. **Agent không cầm token ghi (Lethal Trifecta).** Build agent chạy trong job riêng chỉ
+   có token *đọc*; commit rời job dưới dạng `git bundle`, job `publish` trên runner sạch
+   kiểm tra bundle rồi mới push. Không agent nào có WebFetch/WebSearch; issue của người
+   ngoài không tự khởi động build. Ma trận khả năng: [SECURITY.md](SECURITY.md).
 3. **Trạng thái gắn vào SHA.** Review ghi commit status trên head SHA, merge gate dùng
    `--match-head-commit`, fix-mode bỏ qua nếu PR đã có commit mới → không bao giờ merge
    hay sửa dựa trên kết quả cũ.

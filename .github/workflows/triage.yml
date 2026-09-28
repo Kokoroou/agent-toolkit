@@ -104,7 +104,7 @@ jobs:
       MARKER_Q: "<!-- agent-toolkit:triage-question -->"
       MARKER_S: "<!-- agent-toolkit:triage-summary -->"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
@@ -126,7 +126,7 @@ jobs:
       - name: Claude triage (read-only)
         id: claude
         if: steps.pre.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
         with:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
@@ -139,6 +139,7 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search issues:*),Bash(gh label list:*)"
+            --disallowedTools "WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string","maxLength":1500},"questions":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":400}},"acceptance_criteria":{"type":"array","maxItems":15,"items":{"type":"string","maxLength":400}},"duplicate_of":{"type":["integer","null"]}}}'
 
       - name: Apply decision
@@ -281,7 +282,7 @@ jobs:
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: transcript-triage-${{ inputs.issue-number }}-${{ github.run_attempt }}
           path: ${{ steps.claude.outputs.execution_file }}

@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
       - name: Install tools
@@ -41,22 +41,21 @@ jobs:
           ! grep -rn "agent-toolkit/.github/workflows/.*@main" "$d/.github/workflows"
 
   # Static security audit of the workflows (template injection, excessive permissions,
-  # credential persistence, unpinned actions, …). Report-only: findings show up as
-  # annotations on the run; see docs/SECURITY.md before making it blocking.
+  # credential persistence, unpinned actions, known-vulnerable actions, …). Blocking
+  # from medium severity; accepted findings are ignored inline, config in .github/zizmor.yml.
   zizmor:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: zizmor
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pipx run "zizmor==$ZIZMOR_VERSION" --format github \
-            .github/workflows templates/.github/workflows \
-            || echo "::warning::zizmor reported findings (report-only) — see the annotations."
+          pipx run "zizmor==$ZIZMOR_VERSION" --format github --min-severity medium \
+            .github/workflows templates/.github/workflows
 
   # Dogfood the reusable quality gate: Gitleaks (secrets in history) + Semgrep.
   security:

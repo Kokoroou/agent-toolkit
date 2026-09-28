@@ -3,9 +3,15 @@
 #   mode=implement  issue #N  → branch agent/issue-N → planner + implementer → push → PR "Closes #N"
 #   mode=fix        PR #P     → same branch → implementer fixes CI failure / review findings → push
 #
-# Claude commits locally; this workflow does the push and the PR, with a token Claude
-# never sees (checkout does not persist credentials). A circuit breaker stops the fix
-# loop after `max-fix-attempts` and hands the PR to a human (`needs-human`).
+# Three jobs, so the agent never holds a write credential (docs/SECURITY.md, "lethal
+# trifecta"):
+#   prepare  write token, runs no project code — circuit breaker, branch, start commit
+#   agent    READ-ONLY token — project setup + Claude; its commits leave as a git bundle
+#   publish  write token on a clean runner — verifies the bundle (descends from the start
+#            commit, no .github/workflows/ changes unless allowed), pushes, opens the PR
+# Nothing the agent (or code it runs) writes — .git/config, hooks, $GITHUB_ENV, binaries —
+# reaches the job that pushes. A circuit breaker stops the fix loop after
+# `max-fix-attempts` and hands the PR to a human (`needs-human`).
 #
 # Caller examples: templates/.github/workflows/agent-implement.yml, agent-merge-gate.yml
 name: implement
@@ -104,25 +110,32 @@ on:
     outputs:
       status:
         description: done | partial | blocked | skipped | circuit-open
-        value: ${{ jobs.build.outputs.status }}
+        value: ${{ jobs.publish.outputs.status || jobs.prepare.outputs.status }}
       pr-number:
-        value: ${{ jobs.build.outputs.pr-number }}
+        value: ${{ jobs.publish.outputs.pr || jobs.prepare.outputs.pr }}
+
+# One build per issue / PR at a time, across all three jobs.
+concurrency:
+  group: agent-build-${{ github.repository }}-${{ inputs.mode == 'fix' && format('pr-{0}', inputs.pr-number) || format('issue-{0}', inputs.issue-number) }}
+  cancel-in-progress: false
 
 jobs:
-  build:
+  # ── 1. prepare: write token, no project code ─────────────────────────────────────
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    timeout-minutes: 5
     permissions:
-      contents: write
+      contents: read
       issues: write
       pull-requests: write
-      actions: write
-    concurrency:
-      group: agent-build-${{ github.repository }}-${{ inputs.mode == 'fix' && format('pr-{0}', inputs.pr-number) || format('issue-{0}', inputs.issue-number) }}
-      cancel-in-progress: false
     outputs:
-      status: ${{ steps.publish.outputs.status || steps.ctx.outputs.status }}
-      pr-number: ${{ steps.publish.outputs.pr || steps.ctx.outputs.pr }}
+      skip: ${{ steps.ctx.outputs.skip }}
+      status: ${{ steps.ctx.outputs.status }}
+      pr: ${{ steps.ctx.outputs.pr }}
+      branch: ${{ steps.ctx.outputs.branch }}
+      issue: ${{ steps.ctx.outputs.issue }}
+      attempt: ${{ steps.ctx.outputs.attempt }}
+      before: ${{ steps.ctx.outputs.before }}
     env:
       HAS_APP: ${{ secrets.agent_app_id != '' }}
       MODE: ${{ inputs.mode }}
@@ -134,16 +147,14 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
           # Scoped token: only what this job needs, not every permission of the App.
-          permission-contents: write
+          permission-contents: read
           permission-pull-requests: write
           permission-issues: write
-          permission-actions: write
-          permission-workflows: ${{ inputs.allow-workflow-changes && 'write' || '' }}
 
       - name: Resolve context and circuit breaker
         id: ctx
@@ -166,6 +177,9 @@ jobs:
             if [[ -n "$pr" ]]; then
               skip skipped "PR #$pr already exists for $branch; use mode=fix to iterate on it."
             fi
+            # Start commit: an earlier run's branch if one exists, else the base branch.
+            before=$(gh api "repos/$R/git/ref/heads/$branch" --jq .object.sha 2>/dev/null \
+                     || gh api "repos/$R/git/ref/heads/$BASE" --jq .object.sha)
           elif [[ "$MODE" == fix ]]; then
             [[ "$PR" -gt 0 ]] || { echo "::error::pr-number is required"; exit 1; }
             json=$(gh pr view "$PR" --repo "$R" --json state,labels,headRefName,headRefOid,isCrossRepository,body,comments)
@@ -178,6 +192,7 @@ jobs:
             [[ ",$labels," == *",agent,"* ]] || skip skipped "PR #$PR is not an agent PR."
             [[ ",$labels," == *",needs-human,"* ]] && skip skipped "PR #$PR needs a human."
             branch=$(jq -r .headRefName <<<"$json")
+            before=$(jq -r .headRefOid <<<"$json")
             ISSUE=$(jq -r '.body' <<<"$json" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+' || echo 0)
             attempts=$(jq --arg m "$MARKER_FIX" '[.comments[] | select(.body | contains($m))] | length' <<<"$json")
             echo "attempt=$((attempts + 1))" >>"$GITHUB_OUTPUT"
@@ -192,41 +207,50 @@ jobs:
           else
             echo "::error::mode must be implement or fix"; exit 1
           fi
-          echo "branch=$branch" >>"$GITHUB_OUTPUT"
-          echo "issue=$ISSUE" >>"$GITHUB_OUTPUT"
+          [[ "$before" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::cannot resolve the start commit"; exit 1; }
+          { echo "branch=$branch"; echo "issue=$ISSUE"; echo "before=$before"; } >>"$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v5
-        if: steps.ctx.outputs.skip != 'true'
+  # ── 2. agent: read-only token; untrusted input + code execution live only here ───
+  agent:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    outputs:
+      result: ${{ steps.claude.outputs.structured_output }}
+    env:
+      MODE: ${{ inputs.mode }}
+      PR: ${{ inputs.pr-number }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      BEFORE: ${{ needs.prepare.outputs.before }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ inputs.mode == 'fix' && steps.ctx.outputs.branch || inputs.base-branch }}
-          token: ${{ steps.app.outputs.token || github.token }}
+          ref: ${{ needs.prepare.outputs.before }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Prepare branch and failure context
         id: prep
-        if: steps.ctx.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
           CI_WORKFLOW: ${{ inputs.ci-workflow }}
         run: |
           set -euo pipefail
           git config user.name "agent-toolkit[bot]"
           git config user.email "agent-toolkit[bot]@users.noreply.github.com"
           mkdir -p .agent-context && echo ".agent-context/" >>.git/info/exclude
-          if [[ "$MODE" == implement ]]; then
-            if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-              git fetch origin "$BRANCH" && git checkout -B "$BRANCH" "origin/$BRANCH"
-            else
-              git checkout -b "$BRANCH"
-            fi
-          else
+          git checkout -q -B "$BRANCH"
+          if [[ "$MODE" == fix ]]; then
             ctx=.agent-context/failure.md
-            sha=$(git rev-parse HEAD)
             {
-              echo "# Failure context for PR #$PR (head $sha)"
-              run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$CI_WORKFLOW" --commit "$sha" \
+              echo "# Failure context for PR #$PR (head $BEFORE)"
+              run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$CI_WORKFLOW" --commit "$BEFORE" \
                       --json databaseId,conclusion --jq '[.[] | select(.conclusion == "failure")][0].databaseId // empty')
               if [[ -n "$run" ]]; then
                 echo; echo "## Failing CI log excerpt (run $run, last 400 lines of failed steps)"; echo '```'
@@ -235,23 +259,22 @@ jobs:
               fi
               echo; echo "## Blocking review findings on the current head"
               gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/comments" --paginate \
-                --jq ".[] | select(.commit_id == \"$sha\") | \"- \(.path):\(.line // .original_line) — \(.body | gsub(\"\\n\"; \" \") | .[0:800])\"" || true
+                --jq ".[] | select(.commit_id == \"$BEFORE\") | \"- \(.path):\(.line // .original_line) — \(.body | gsub(\"\\n\"; \" \") | .[0:800])\"" || true
               gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json comments \
                 --jq '[.comments[] | select(.body | contains("<!-- agent-toolkit:review -->"))] | last | .body // ""' || true
             } >"$ctx"
             echo "Context: $(wc -l <"$ctx") lines"
           fi
-          echo "before=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
 
       - name: Project setup
-        if: steps.ctx.outputs.skip != 'true' && inputs.setup-command != ''
-        run: ${{ inputs.setup-command }}
+        if: inputs.setup-command != ''
+        run: ${{ inputs.setup-command }} # zizmor: ignore[template-injection] caller-owned command
 
       - name: Claude Code
         id: claude
-        if: steps.ctx.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
         env:
+          # Read-only (job permissions): enough for `gh issue view` / `gh pr view`.
           GH_TOKEN: ${{ github.token }}
         with:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
@@ -268,41 +291,127 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Edit,MultiEdit,Write,Glob,Grep,Task,Agent,TodoWrite,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rm:*),Bash(git mv:*),Bash(git restore:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(ls:*),Bash(cat:*)${{ inputs.extra-allowed-tools != '' && format(',{0}', inputs.extra-allowed-tools) || '' }}"
-            --disallowedTools "Bash(git push:*),Bash(git remote:*),Bash(git config:*),Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git rebase:*)"
+            --disallowedTools "WebFetch,WebSearch,Bash(curl:*),Bash(wget:*),Bash(git push:*),Bash(git remote:*),Bash(git config:*),Bash(git checkout:*),Bash(git switch:*),Bash(git reset:*),Bash(git rebase:*)"
             --json-schema '{"type":"object","additionalProperties":false,"required":["status","summary","risk"],"properties":{"status":{"enum":["done","partial","blocked"]},"summary":{"type":"string","maxLength":4000},"risk":{"enum":["low","medium","high"]},"pr_title":{"type":"string","maxLength":120},"pr_body":{"type":"string","maxLength":20000}}}'
 
-      - name: Push and open / update PR
+      - name: Bundle the agent's commits
+        if: always() && steps.prep.outcome == 'success'
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/agent-out"; mkdir -p "$out"
+          # Anything Claude left uncommitted is committed so nothing is silently lost.
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add -A
+            git commit -q -m "chore: include uncommitted agent changes"
+          fi
+          n=$(git rev-list --count "$BEFORE..HEAD")
+          echo "$n new commit(s)"
+          if [[ "$n" -gt 0 ]]; then git bundle create "$out/agent.bundle" "$BEFORE..HEAD"; fi
+
+      - name: Upload agent output
+        if: always() && steps.prep.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: agent-output
+          path: ${{ runner.temp }}/agent-out/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+
+      - name: Usage summary
+        if: always() && steps.claude.outputs.execution_file != ''
+        env:
+          EXEC: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          jq -r '[.[] | select(.type == "result")] | last // {} |
+            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
+            "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload transcript
+        if: always() && steps.claude.outputs.execution_file != ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: transcript-${{ inputs.mode }}-${{ inputs.mode == 'fix' && inputs.pr-number || inputs.issue-number }}-${{ github.run_attempt }}
+          path: ${{ steps.claude.outputs.execution_file }}
+          retention-days: 30
+
+  # ── 3. publish: write token on a clean runner; agent output is untrusted data ────
+  publish:
+    needs: [prepare, agent]
+    if: always() && !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    outputs:
+      status: ${{ steps.publish.outputs.status }}
+      pr: ${{ steps.publish.outputs.pr }}
+    env:
+      HAS_APP: ${{ secrets.agent_app_id != '' }}
+      MODE: ${{ inputs.mode }}
+      ISSUE: ${{ inputs.issue-number }}
+      PR: ${{ inputs.pr-number }}
+      BASE: ${{ inputs.base-branch }}
+      MARKER_FIX: "<!-- agent-toolkit:fix-attempt -->"
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.agent_app_id }}
+          private-key: ${{ secrets.agent_app_private_key }}
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-actions: write
+          permission-workflows: ${{ inputs.allow-workflow-changes && 'write' || '' }}
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.prepare.outputs.before }}
+          token: ${{ steps.app.outputs.token || github.token }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download agent output
+        continue-on-error: true # no artifact = the agent job failed before bundling
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: agent-output
+          path: ${{ runner.temp }}/agent-out
+
+      - name: Verify, push and open / update PR
         id: publish
-        if: steps.ctx.outputs.skip != 'true' && steps.prep.outcome == 'success' && !cancelled()
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           PUSH_TOKEN: ${{ steps.app.outputs.token || github.token }}
-          OUT: ${{ steps.claude.outputs.structured_output }}
-          BRANCH: ${{ steps.ctx.outputs.branch }}
-          LINKED_ISSUE: ${{ steps.ctx.outputs.issue }}
-          ATTEMPT: ${{ steps.ctx.outputs.attempt }}
-          BEFORE: ${{ steps.prep.outputs.before }}
+          OUT: ${{ needs.agent.outputs.result }}
+          BRANCH: ${{ needs.prepare.outputs.branch }}
+          LINKED_ISSUE: ${{ needs.prepare.outputs.issue }}
+          ATTEMPT: ${{ needs.prepare.outputs.attempt }}
+          BEFORE: ${{ needs.prepare.outputs.before }}
+          ALLOW_WF: ${{ inputs.allow-workflow-changes }}
           DISPATCH: ${{ inputs.ci-dispatch-workflow }}
           REVIEW_DISPATCH: ${{ inputs.review-dispatch-workflow }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           R="$GITHUB_REPOSITORY"
-          [[ -n "$OUT" ]] || OUT='{"status":"blocked","summary":"Claude did not return a result (error, timeout or max-turns). See the transcript artifact.","risk":"medium"}'
-          status=$(jq -r .status <<<"$OUT"); risk=$(jq -r .risk <<<"$OUT"); summary=$(jq -r .summary <<<"$OUT")
           ensure() { gh label create "$1" --repo "$R" --color "$2" >/dev/null 2>&1 || true; }
+          # The agent's structured output is untrusted: keep only the known shape.
+          jq -e 'type == "object" and (.status | IN("done","partial","blocked")) and (.risk | IN("low","medium","high"))' \
+            <<<"${OUT:-null}" >/dev/null 2>&1 \
+            || OUT='{"status":"blocked","summary":"Claude did not return a result (error, timeout or max-turns). See the transcript artifact.","risk":"medium"}'
+          status=$(jq -r .status <<<"$OUT"); risk=$(jq -r .risk <<<"$OUT"); summary=$(jq -r '.summary // ""' <<<"$OUT")
 
-          # Anything Claude left uncommitted is committed so nothing is silently lost.
-          if [[ -n "$(git status --porcelain)" ]]; then
-            git add -A
-            git commit -m "chore: include uncommitted agent changes" >/dev/null
-          fi
-          commits=$(git rev-list --count "$BEFORE..HEAD")
-
-          if [[ "$commits" -eq 0 ]]; then
-            status=blocked
+          hand_to_human() { # <reason>
             ensure needs-human d93f0b
-            msg="🤖 Agent run produced no commits (status \`$(jq -r .status <<<"$OUT")\`).
+            local msg="🤖 $1
 
           $summary
 
@@ -315,11 +424,26 @@ jobs:
               gh issue edit "$ISSUE" --repo "$R" --add-label needs-human >/dev/null
               gh issue comment "$ISSUE" --repo "$R" --body "$msg" >/dev/null
             fi
-            echo "status=$status" >>"$GITHUB_OUTPUT"
+            echo "status=blocked" >>"$GITHUB_OUTPUT"
             exit 0
+          }
+
+          # The bundle must only add commits on top of the start commit prepare resolved.
+          bundle="$RUNNER_TEMP/agent-out/agent.bundle" commits=0
+          if [[ -f "$bundle" ]]; then
+            git bundle verify -q "$bundle" >/dev/null || hand_to_human "The agent's output bundle is invalid; nothing was pushed."
+            git fetch -q "$bundle" HEAD
+            head=$(git rev-parse FETCH_HEAD)
+            git merge-base --is-ancestor "$BEFORE" "$head" \
+              || hand_to_human "The agent's commits do not build on $BEFORE; nothing was pushed."
+            commits=$(git rev-list --count "$BEFORE..$head")
+          fi
+          [[ "$commits" -gt 0 ]] || hand_to_human "Agent run produced no commits (status \`$status\`)."
+          if [[ "$ALLOW_WF" != true ]] && git diff --name-only "$BEFORE" "$head" | grep -q '^\.github/workflows/'; then
+            hand_to_human "The agent changed files in \`.github/workflows/\`, which needs \`allow-workflow-changes: true\`; nothing was pushed."
           fi
 
-          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${R}.git" "HEAD:refs/heads/$BRANCH"
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${R}.git" "$head:refs/heads/$BRANCH"
 
           if [[ "$MODE" == implement ]]; then
             title=$(jq -r '.pr_title // empty' <<<"$OUT")
@@ -356,20 +480,3 @@ jobs:
           echo "status=$status" >>"$GITHUB_OUTPUT"
           echo "pr=$pr" >>"$GITHUB_OUTPUT"
           echo "### $MODE → \`$status\`, PR #$pr, $commits commit(s)" >>"$GITHUB_STEP_SUMMARY"
-
-      - name: Usage summary
-        if: always() && steps.claude.outputs.execution_file != ''
-        env:
-          EXEC: ${{ steps.claude.outputs.execution_file }}
-        run: |
-          jq -r '[.[] | select(.type == "result")] | last // {} |
-            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
-            "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
-
-      - name: Upload transcript
-        if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v5
-        with:
-          name: transcript-${{ inputs.mode }}-${{ inputs.mode == 'fix' && inputs.pr-number || inputs.issue-number }}-${{ github.run_attempt }}
-          path: ${{ steps.claude.outputs.execution_file }}
-          retention-days: 30
