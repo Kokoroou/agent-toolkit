@@ -53,14 +53,14 @@ Quan hệ quan trọng cần nhớ khi sửa:
    public (hoặc cùng owner với cấu hình *Access* đặc biệt), và `claude plugin marketplace add`
    / `plugin_marketplaces` clone được mà không cần PAT. Toolkit không chứa secret hay
    nghiệp vụ — đừng bao giờ commit thứ gì như vậy vào đây.
-2. **Settings → Actions → General → Workflow permissions**: *Read and write permissions*
+2. **[Settings → Actions → General](https://github.com/kokoroou/agent-toolkit/settings/actions) → Workflow permissions**: *Read and write permissions*
    và tick *Allow GitHub Actions to create and approve pull requests* — **trước lần push
    đầu tiên lên `main`**. Thiếu bước này release-please chỉ tạo được nhánh
    `release-please--…` mà không mở được PR (`GitHub Actions is not permitted to create or
    approve pull requests`). Sau khi bật, chạy lại run `toolkit-release` bị lỗi.
-3. **Settings → General → Pull Requests**: bật *Allow squash merging*, nên tắt merge
+3. **[Settings → General](https://github.com/kokoroou/agent-toolkit/settings) → Pull Requests**: bật *Allow squash merging*, nên tắt merge
    commit để lịch sử `main` là chuỗi Conventional Commits sạch (release-please đọc nó).
-4. **Settings → Rules → Rulesets** (repo public có sẵn trên gói Free): nên có ruleset
+4. **[Settings → Rules → Rulesets](https://github.com/kokoroou/agent-toolkit/settings/rules)** (repo public có sẵn trên gói Free): nên có ruleset
    cho `main` cấm force-push và xoá branch. Cẩn thận nếu bật *Require status checks*
    (`lint`): release PR do `GITHUB_TOKEN` mở **không** kích hoạt `self-test`, nên check
    không bao giờ xuất hiện và PR bị kẹt — khi đó thêm mình vào *Bypass list* (merge với

@@ -81,7 +81,7 @@ bước sau, giờ chỉ cần lấy giá trị):
 | Secret | Lấy ở đâu | Khi nào chọn |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Chạy `claude setup-token` trên máy, đăng nhập bằng tài khoản Claude Pro/Max, copy token in ra | Bạn có gói Claude: dùng hạn mức gói, không tính tiền API. |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → *API Keys* → *Create Key* | Không có gói Claude, hoặc cần chi phí tách bạch theo API. Nên đặt *spend limit* trong Console. |
+| `ANTHROPIC_API_KEY` | [Claude Console → API keys](https://platform.claude.com/settings/keys) → *Create Key* (Console đã chuyển từ `console.anthropic.com` sang `platform.claude.com`; link cũ vẫn tự chuyển hướng) | Không có gói Claude, hoặc cần chi phí tách bạch theo API. Nên đặt *spend limit* trong Console. |
 
 Lưu giá trị ở nơi an toàn (password manager). Không commit vào repo.
 
@@ -100,8 +100,12 @@ repo của bạn.
 
 ### 5.1 Tạo App
 
-1. Vào **GitHub → ảnh đại diện → Settings → Developer settings → GitHub Apps → New GitHub App**
-   (với organization: *Organization settings → Developer settings → GitHub Apps*).
+1. Mở [trang tạo App điền sẵn cấu hình](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write).
+   Link này đã điền Homepage URL, bỏ tick Webhook, chọn sẵn các quyền ở bước 3 và
+   *Only on this account*; bạn chỉ cần đặt tên rồi kiểm tra lại các bước dưới. Nếu tự vào:
+   **ảnh đại diện → Settings → Developer settings → GitHub Apps → New GitHub App**.
+   Với organization, dùng `https://github.com/organizations/<ORG>/settings/apps/new` kèm
+   cùng phần query phía sau dấu `?`.
 2. Điền:
    - **GitHub App name**: tên duy nhất, ví dụ `kokoroou-agent`. Tên này sẽ hiện là tác
      giả của commit/PR (`kokoroou-agent[bot]`).
@@ -140,7 +144,7 @@ repo của bạn.
 
 1. Trang App → **Install App** → chọn tài khoản của bạn → **Install**.
 2. Chọn *Only select repositories* và tick các repo dự án sẽ dùng pipeline (có thể thêm
-   repo sau: *Settings → Applications → Installed GitHub Apps → Configure*).
+   repo sau ở [Installed GitHub Apps](https://github.com/settings/installations) → *Configure*).
 
 > Token của App được tạo trong từng run và chỉ có hiệu lực với repo đang chạy, nên App
 > **phải được cài vào mọi repo dự án** có secret `AGENT_APP_ID`. Nếu thiếu, bước
@@ -150,11 +154,19 @@ repo của bạn.
 
 Chỉ cần nếu muốn triage tự thêm issue vào một GitHub Project (v2) và điền `Priority`,
 `Size`. Project thuộc **tài khoản cá nhân** không nhận `GITHUB_TOKEN` hay token của App,
-nên cần classic PAT:
+nên cần **classic** PAT:
 
-1. **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)**.
-2. Note: `agent-toolkit projects`; Expiration: tuỳ bạn (nhớ gia hạn); scopes: **`repo`** và **`project`**.
-3. Copy token → sẽ dùng làm secret `PROJECT_TOKEN`.
+1. Mở [trang tạo classic PAT điền sẵn](https://github.com/settings/tokens/new?scopes=repo,project&description=agent-toolkit%20projects)
+   (đã điền Note và tick sẵn scope), hoặc vào
+   **Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → Generate new token (classic)**.
+2. Kiểm tra lại: Note `agent-toolkit projects`; Expiration tuỳ bạn (nhớ gia hạn); scopes **`repo`** và **`project`**.
+3. **Generate token** → copy token → sẽ dùng làm secret `PROJECT_TOKEN`.
+
+> **Đừng dùng fine-grained token.** Nếu trang bạn đang mở có các mục *Repository access*
+> và *Permissions → Add permissions* thì đó là trang fine-grained. Loại token này chưa có
+> quyền ghi vào Project của tài khoản cá nhân, nên triage sẽ không thêm được issue vào
+> Project. Trang classic chỉ có một danh sách checkbox scope (`repo`, `workflow`,
+> `project`, ...).
 
 ## 7. Dùng plugin khi làm việc tay (tuỳ chọn)
 

@@ -218,7 +218,8 @@ nơi quan trọng nhất để agent làm đúng ý bạn. Giữ ngắn, cụ th
 
 ## 5. Thêm secrets
 
-**Repo → Settings → Secrets and variables → Actions → New repository secret**, hoặc bằng CLI
+**Repo → Settings → Secrets and variables → Actions → New repository secret**
+(`https://github.com/<owner>/<repo>/settings/secrets/actions`), hoặc bằng CLI
 (chạy trong thư mục repo):
 
 ```bash
@@ -251,8 +252,9 @@ nhiều repo.
      PR và release-please không mở được release PR.
 2. **Settings → General → Pull Requests**: bật *Allow squash merging* (merge gate dùng
    squash) và nên bật *Automatically delete head branches*.
-3. **Settings → Code security**: bật *Dependabot alerts* và *Dependabot security updates*
-   (miễn phí cả với repo private).
+3. **Settings → Advanced Security** (trên sidebar; trước đây tên là *Code
+   security*): bật *Dependabot alerts* và *Dependabot security updates* (miễn phí cả với
+   repo private, không cần mua gói GitHub Advanced Security dù trang mang tên đó).
 
 Không cần (và gói Free + private cũng không có) branch protection: merge gate tự kiểm
 tra checks và statuses.
