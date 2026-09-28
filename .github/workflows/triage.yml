@@ -15,9 +15,12 @@ on:
         type: number
         required: true
       max-rounds:
-        description: Max clarification rounds before handing the issue to a human.
+        description: >-
+          Max clarification rounds (1–5, larger values are capped at 5) before handing the
+          issue to a human. Rounds are counted per triage cycle: re-triaging an issue after a
+          ready / needs-human / reject decision starts again at 0.
         type: number
-        default: 3
+        default: 5
       model:
         description: Claude model id or alias.
         type: string
@@ -110,13 +113,27 @@ jobs:
 
       - name: Pre-checks and clarification round count
         id: pre
+        env:
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
         run: |
           set -euo pipefail
-          json=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels,comments)
+          json=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json state,labels)
           state=$(jq -r .state <<<"$json")
           labels=$(jq -r '[.labels[].name] | join(",")' <<<"$json")
-          rounds=$(jq --arg m "$MARKER_Q" '[.comments[] | select(.body | contains($m))] | length' <<<"$json")
-          echo "rounds=$rounds" >> "$GITHUB_OUTPUT"
+          max=${MAX_ROUNDS%%.*}
+          if (( max > 5 )); then echo "::warning::max-rounds $MAX_ROUNDS capped at 5"; max=5; fi
+          if (( max < 1 )); then max=1; fi
+          # Rounds of this triage cycle only: bot questions after the latest bot summary
+          # (ready / needs-human / reject), so a re-triaged issue starts again at 0. Only
+          # bot comments count, so pasting a marker into a comment cannot move the count.
+          rounds=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments?per_page=100" --paginate \
+                     --jq '.[] | select(.user.type == "Bot") | {body}' \
+                   | jq -s --arg q "$MARKER_Q" --arg s "$MARKER_S" '
+                       ([to_entries[] | select(.value.body | contains($s)) | .key] | max // -1) as $last
+                       | [.[$last + 1:][] | select(.body | contains($q))] | length')
+          # Triaging an issue that was already ready means its requirements changed.
+          was_ready=false; [[ ",$labels," == *",ready-for-plan,"* ]] && was_ready=true
+          { echo "rounds=$rounds"; echo "max_rounds=$max"; echo "was_ready=$was_ready"; } >>"$GITHUB_OUTPUT"
           if [[ "$state" != "OPEN" ]] || [[ ",$labels," == *",needs-human,"* ]]; then
             echo "Issue #$ISSUE is closed or owned by a human; skipping."
             echo "decision=skipped" >> "$GITHUB_OUTPUT"
@@ -134,7 +151,7 @@ jobs:
           allowed_bots: ${{ inputs.allowed-bots }}
           plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
           plugins: pipeline@agent-toolkit
-          prompt: /pipeline:triage-issue ${{ inputs.issue-number }} ${{ steps.pre.outputs.rounds }} ${{ inputs.max-rounds }}
+          prompt: /pipeline:triage-issue ${{ inputs.issue-number }} ${{ steps.pre.outputs.rounds }} ${{ steps.pre.outputs.max_rounds }}
           claude_args: >-
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
@@ -148,7 +165,7 @@ jobs:
         env:
           OUT: ${{ steps.claude.outputs.structured_output }}
           ROUNDS: ${{ steps.pre.outputs.rounds }}
-          MAX_ROUNDS: ${{ inputs.max-rounds }}
+          MAX_ROUNDS: ${{ steps.pre.outputs.max_rounds }}
         run: |
           set -euo pipefail
           if [[ -z "$OUT" ]] || ! jq -e .decision <<<"$OUT" >/dev/null; then
@@ -199,6 +216,8 @@ jobs:
                 echo
                 echo "**Acceptance criteria**"
                 jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
+                echo
+                echo "_To change the requirements, edit the issue (triage re-runs); to cancel, close it._"
               } >"$body" ;;
             needs-human)
               { echo "$MARKER_S"; echo "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)."; echo; echo "$summary"; } >"$body" ;;
@@ -217,6 +236,32 @@ jobs:
             echo "decision=$decision"; echo "risk=$risk"; echo "size=$size"; echo "priority=$prio"
           } >>"$GITHUB_OUTPUT"
           echo "### Triage #$ISSUE → \`$decision\` (score $score, $prio, risk $risk, size $size)" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Flag agent PRs built from the old requirements
+        if: steps.apply.outputs.decision != '' && steps.pre.outputs.was_ready == 'true'
+        env:
+          DECISION: ${{ steps.apply.outputs.decision }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          # Issues API (PRs are issues): needs only `issues`, not `pull-requests`, permission.
+          prs=$(gh api "repos/$R/issues?state=open&labels=agent&per_page=100" --paginate \
+                  --jq '.[] | select(.pull_request) | {number, body, labels: [.labels[].name]}' \
+                | jq -r --arg n "$ISSUE" '
+                    select((.body // "") | test("(?i)\\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #" + $n + "\\b"))
+                    | select(.labels | index("needs-human") | not) | .number')
+          [[ -n "$prs" ]] || exit 0
+          gh label create needs-human --repo "$R" --color d93f0b >/dev/null 2>&1 || true
+          for pr in $prs; do
+            gh api -X POST "repos/$R/issues/$pr/labels" -f "labels[]=needs-human" >/dev/null
+            gh api -X POST "repos/$R/issues/$pr/comments" -F body=@- >/dev/null <<EOF
+          🛑 The requirements in #$ISSUE changed after this PR was built (re-triage → \`$DECISION\`). Labelled \`needs-human\`, so it will not be auto-fixed or merged.
+
+          - To rebuild from the new requirements: close this PR and delete its branch, then (once #$ISSUE is \`ready-for-plan\`) add \`agent:implement\` to it.
+          - To keep it: update it by hand and remove \`needs-human\`.
+          EOF
+            echo "Flagged stale PR #$pr" >>"$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Add to GitHub Project and set fields
         if: steps.apply.outputs.decision == 'ready' && inputs.project-number != ''

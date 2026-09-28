@@ -8,7 +8,7 @@
    ▼  agent-triage.yml ─ uses ─▶ triage.yml
    │     Claude (read-only) trả JSON {decision, score, type, priority, risk, size, questions…}
    │     workflow áp nhãn / comment / GitHub Projects theo JSON đó
-   │     ├─ clarify      → awaiting-clarification, hỏi ≤3 câu (tối đa max-rounds vòng)
+   │     ├─ clarify      → awaiting-clarification, hỏi ≤3 câu làm rõ ý định (tối đa max-rounds ≤ 5 vòng)
    │     ├─ needs-human  → dừng
    │     ├─ reject       → comment / đóng nếu trùng
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)
@@ -42,6 +42,18 @@ Guardrail chạy song song: transcript mỗi lần Claude chạy được upload
 và `usage-report.yml` cập nhật hằng tuần một issue tổng hợp phút Actions + chi phí Claude.
 `workflows/ci-doctor.md` (gh-aw) bắt lỗi CI trên `develop`/`main` và biến nó thành issue
 `needs-triage` để quay lại đầu pipeline.
+
+## Đổi yêu cầu và huỷ
+
+- **Đổi yêu cầu = sửa issue.** Sửa issue đang `needs-triage`, `awaiting-clarification` hoặc
+  `ready-for-plan` kích hoạt triage lại. Số vòng hỏi chỉ đếm câu hỏi của bot *sau* kết luận
+  gần nhất (ready / needs-human / reject), nên mỗi lần triage lại bắt đầu từ 0.
+- **PR cũ không được merge âm thầm.** Triage lại một issue từng `ready-for-plan` gắn
+  `needs-human` cho PR agent đang mở của nó. Issue bị sửa trong lúc build đang chạy → PR
+  mở ở dạng draft + `needs-human`.
+- **Huỷ = đóng issue.** Triage, build (`implement` lẫn `fix`) bỏ qua issue đã đóng; bước
+  `publish` kiểm tra lại trước khi push nên build đang chạy dở không push, không mở PR;
+  merge gate chặn PR có issue liên kết đã đóng và gắn `needs-human`.
 
 ## Nguyên tắc thiết kế
 
