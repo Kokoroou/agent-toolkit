@@ -3,6 +3,8 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
+    cooldown: # wait before adopting a new release (compromised / broken publishes)
+      default-days: 7
     directory: /
     schedule:
       interval: weekly
