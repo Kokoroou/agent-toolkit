@@ -211,6 +211,14 @@ default_branch=$(gh repo view "$repo" --json defaultBranchRef --jq '.defaultBran
 [[ -n "$default_branch" ]] || die "$repo has no commits yet — push an initial commit first"
 perm=$(gh repo view "$repo" --json viewerPermission --jq .viewerPermission)
 [[ "$perm" == ADMIN ]] || warn "you are $perm on $repo, not ADMIN — secrets and settings will likely fail"
+# Files are committed on the default branch, so stop before writing anything if the
+# checkout is elsewhere — otherwise they would be left uncommitted on the wrong branch.
+current=$(git -C "$target" symbolic-ref --short -q HEAD || echo "")
+if [[ "$current" != "$default_branch" && "$commit" != false ]]; then
+  die "$target is on '${current:-detached HEAD}', but the pipeline files are committed to the default branch '$default_branch'.
+  Switch first (in that folder):  git switch $default_branch && git pull
+  (or pass --no-commit to write the files here and commit them yourself)"
+fi
 ok "$repo (default branch: $default_branch) at $target"
 
 # ── 3. toolkit files ────────────────────────────────────────────────────────────
@@ -367,7 +375,8 @@ if [[ -z "$(git -C "$target" status --porcelain -- "${files[@]}")" ]]; then
   ok "nothing to commit"; commit=none
 fi
 if [[ -z "$commit" ]]; then
-  confirm "Commit the pipeline files and push to '$default_branch' and 'develop'?" y && commit=true || commit=false
+  targets="'$default_branch'"; [[ "$default_branch" != develop ]] && targets+=" and 'develop'"
+  confirm "Commit the pipeline files and push to $targets?" y && commit=true || commit=false
 fi
 if [[ "$commit" == true ]]; then
   current=$(git -C "$target" symbolic-ref --short -q HEAD || echo "")
@@ -381,7 +390,8 @@ if [[ "$commit" == true ]]; then
     git -C "$target" commit -q -m "ci: add agent-toolkit pipeline" -- "${files[@]}"
     git -C "$target" push -q origin "HEAD:$default_branch" || die "push to $default_branch failed"
     ok "pushed to $default_branch"
-    if git -C "$target" push -q origin "HEAD:develop" 2>/dev/null; then ok "pushed to develop"
+    if [[ "$default_branch" == develop ]]; then :
+    elif git -C "$target" push -q origin "HEAD:develop" 2>/dev/null; then ok "pushed to develop"
     else warn "develop has diverged from $default_branch — merge $default_branch into develop by hand"; fi
   fi
 elif [[ "$commit" == false ]]; then
