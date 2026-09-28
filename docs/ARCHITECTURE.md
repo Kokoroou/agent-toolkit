@@ -67,7 +67,7 @@ và `usage-report.yml` cập nhật hằng tuần một issue tổng hợp phút
 | Sự kiện do `GITHUB_TOKEN` tạo (push, PR, label, merge) **không kích hoạt workflow khác** (trừ `workflow_dispatch`/`repository_dispatch`) | PR của agent không chạy CI, merge không chạy smoke, nhãn `ready-for-plan` không khởi động build | Khuyến nghị GitHub App (`AGENT_APP_ID`/`AGENT_APP_PRIVATE_KEY`). Không có App: triage *dispatch* agent-implement, implement/merge-gate *dispatch* `ci.yml`, smoke test chạy ngay trong merge-gate |
 | Free + private repo không có branch protection / rulesets | Auto-merge gốc không gate được theo check | `merge-gate.yml` tự kiểm Checks + Statuses API rồi `gh pr merge --match-head-commit` |
 | `Closes #N` chỉ tự đóng issue khi merge vào **default branch** | Issue treo sau khi merge vào `develop` | merge-gate đóng issue tường minh |
-| `workflow_run`, `schedule`, `workflow_dispatch` chỉ đọc workflow ở **default branch** | Caller đặt ở `develop` không bao giờ chạy | Commit caller vào default branch (xem SETUP) |
+| `workflow_run`, `schedule`, `workflow_dispatch` chỉ đọc workflow ở **default branch** | Caller đặt ở `develop` không bao giờ chạy | Commit caller vào default branch (xem [ADD-TO-PROJECT §7](ADD-TO-PROJECT.md#7-chọn-default-branch)) |
 | `claude-code-action` từ chối actor là bot | Review/fix không chạy trên PR do App tạo | input `allowed-bots` (mặc định `*`, phù hợp repo private) |
 | Projects v2 của **user** không nhận `GITHUB_TOKEN` hay GitHub App | Không thêm được item | secret `PROJECT_TOKEN` (classic PAT, scope `project`, `repo`) |
 | CodeQL cần Advanced Security trên repo private | Không có SAST | Semgrep CLI (chỉ finding mới so với base) + Gitleaks + Dependabot |

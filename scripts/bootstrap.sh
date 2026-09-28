@@ -58,7 +58,7 @@ fi
 
 cat <<EOF
 
-Next steps (see docs/SETUP.md in agent-toolkit):
+Next steps (see docs/ADD-TO-PROJECT.md in agent-toolkit):
   1. Edit the "edit for your stack" blocks in .github/workflows/*.yml and CLAUDE.md.
   2. Repository secrets:
        ANTHROPIC_API_KEY  (or CLAUDE_CODE_OAUTH_TOKEN)          required
