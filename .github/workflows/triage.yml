@@ -168,7 +168,7 @@ jobs:
           esac
           for l in "${add[@]}"; do ensure "$l" ededed; done
           args=(); for l in "${add[@]}"; do args+=(--add-label "$l"); done
-          [[ ${#remove[@]} -gt 0 ]] && gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${remove[@]}" >/dev/null || true
+          if [[ ${#remove[@]} -gt 0 ]]; then gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${remove[@]}" >/dev/null || true; fi
           gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${args[@]}" >/dev/null
 
           body=$(mktemp)

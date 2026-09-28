@@ -172,7 +172,7 @@ jobs:
             if [[ "$attempts" -ge "$MAX_FIX" ]]; then
               gh label create needs-human --repo "$R" --color d93f0b >/dev/null 2>&1 || true
               gh pr edit "$PR" --repo "$R" --add-label needs-human >/dev/null
-              [[ "$ISSUE" -gt 0 ]] && gh issue edit "$ISSUE" --repo "$R" --add-label needs-human >/dev/null || true
+              if [[ "$ISSUE" -gt 0 ]]; then gh issue edit "$ISSUE" --repo "$R" --add-label needs-human >/dev/null || true; fi
               gh pr comment "$PR" --repo "$R" --body "🛑 Circuit breaker: $attempts automatic fix attempts did not get this PR green. Labelled \`needs-human\`; the agent will not touch it again until the label is removed." >/dev/null
               skip circuit-open "Circuit breaker open after $attempts attempts."
             fi

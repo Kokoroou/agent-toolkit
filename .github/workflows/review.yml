@@ -118,12 +118,12 @@ jobs:
           esac
           gh api "repos/$R/statuses/$SHA" -f state="$state" -f context="$CONTEXT" \
             -f description="$desc" -f target_url="$RUN_URL" >/dev/null
-          icon=$([[ $verdict == approve ]] && echo ✅ || echo ⚠️)
+          if [[ $verdict == approve ]]; then icon=✅; else icon=⚠️; fi
           body=$(mktemp)
           { echo "$MARKER"; echo "$icon **Claude review** of \`${SHA:0:7}\`: **$verdict** (risk \`$risk\`)"; echo; jq -r .summary <<<"$OUT"; } >"$body"
           gh pr comment "$PR" --repo "$R" --body-file "$body" >/dev/null
           if [[ "$verdict" == needs-human || "$risk" == high ]]; then
-            l=$([[ "$risk" == high ]] && echo risk:high || echo needs-human)
+            if [[ "$risk" == high ]]; then l=risk:high; else l=needs-human; fi
             gh label create "$l" --repo "$R" --color d93f0b >/dev/null 2>&1 || true
             gh pr edit "$PR" --repo "$R" --add-label "$l" >/dev/null
           fi
