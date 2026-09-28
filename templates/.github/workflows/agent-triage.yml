@@ -77,4 +77,8 @@ jobs:
       auto-implement-max-size: M
       # project-owner: kokoroou
       # project-number: "1"
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      project_token: ${{ secrets.PROJECT_TOKEN }}

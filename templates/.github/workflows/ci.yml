@@ -33,4 +33,6 @@ jobs:
         node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
       baseline-branch: develop
       coverage-tolerance: "0"
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      gitleaks_license: ${{ secrets.GITLEAKS_LICENSE }} # only for organization repos

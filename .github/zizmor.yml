@@ -1,0 +1,9 @@
+# zizmor config (self-test.yml). Accepted findings are ignored inline with
+# `# zizmor: ignore[<rule>]` next to the reason; see docs/SECURITY.md.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Projects call the toolkit by its own moving release tag (@v0) on purpose.
+        kokoroou/agent-toolkit/*: ref-pin
+        "*": hash-pin

@@ -219,7 +219,8 @@ git add -A && git commit -m "chore: initial sandbox" && git push -u origin HEAD
 ```
 
 Lệnh `smoke-command` mặc định trong template là
-`npm run build && npm test -- --testPathPattern=smoke`; với sandbox này hãy đổi thành
+`npm run build && npm test -- smoke` (mẫu đường dẫn dạng tham số vị trí — chạy được cả
+Jest 29 lẫn Jest 30, vốn đã bỏ `--testPathPattern`); với sandbox này hãy đổi thành
 `npm test` (hoặc thêm một file `test/smoke.test.js`).
 
 Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) với repo này (template mặc định

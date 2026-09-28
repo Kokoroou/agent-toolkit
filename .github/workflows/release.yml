@@ -67,11 +67,15 @@ jobs:
       - name: Mint GitHub App token
         id: app
         if: env.HAS_APP == 'true'
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.agent_app_id }}
           private-key: ${{ secrets.agent_app_private_key }}
-      - uses: googleapis/release-please-action@v4
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: rp
         with:
           token: ${{ steps.app.outputs.token || github.token }}
@@ -88,15 +92,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
           persist-credentials: false
       - name: Setup
         if: inputs.setup-command != ''
-        run: ${{ inputs.setup-command }}
+        env:
+          SETUP_COMMAND: ${{ inputs.setup-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$SETUP_COMMAND"
       - name: Build
-        run: ${{ inputs.build-command }}
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }} # caller-owned; via env, not interpolated into the script
+        run: eval "$BUILD_COMMAND"
       - name: Upload artifacts to the release
         if: inputs.artifact-paths != ''
         env:

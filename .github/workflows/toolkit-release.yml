@@ -20,7 +20,10 @@ jobs:
     with:
       config-file: release-please-config.json
       manifest-file: .release-please-manifest.json
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
 
   major-tag:
     needs: release
@@ -29,13 +32,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.release.outputs.tag-name }}
+          persist-credentials: false
       - name: Move major tag
         env:
           TAG: ${{ needs.release.outputs.tag-name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           major="${TAG%%.*}"
           git tag -f "$major" "$TAG"
-          git push -f origin "refs/tags/$major"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$major"

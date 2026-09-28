@@ -34,4 +34,9 @@ jobs:
       # only used when no GitHub App is configured:
       ci-dispatch-workflow: ci.yml
       review-dispatch-workflow: agent-review.yml
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}

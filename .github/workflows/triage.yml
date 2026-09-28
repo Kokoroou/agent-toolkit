@@ -47,6 +47,12 @@ on:
         description: Largest size (XS|S|M|L) that is auto-implemented; bigger issues wait for a human.
         type: string
         default: M
+      auto-implement-trusted-only:
+        description: >-
+          Only auto-implement issues opened by the repo's OWNER / MEMBER / COLLABORATOR, so an
+          outsider's issue on a public repo cannot start the write-enabled build agent.
+        type: boolean
+        default: true
       toolkit-marketplace:
         description: Git URL of the plugin marketplace to install the pipeline plugin from.
         type: string
@@ -98,7 +104,7 @@ jobs:
       MARKER_Q: "<!-- agent-toolkit:triage-question -->"
       MARKER_S: "<!-- agent-toolkit:triage-summary -->"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
@@ -120,7 +126,7 @@ jobs:
       - name: Claude triage (read-only)
         id: claude
         if: steps.pre.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
         with:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
@@ -133,6 +139,7 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search issues:*),Bash(gh label list:*)"
+            --disallowedTools "WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string","maxLength":1500},"questions":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":400}},"acceptance_criteria":{"type":"array","maxItems":15,"items":{"type":"string","maxLength":400}},"duplicate_of":{"type":["integer","null"]}}}'
 
       - name: Apply decision
@@ -247,12 +254,18 @@ jobs:
           RISK: ${{ steps.apply.outputs.risk }}
           SIZE: ${{ steps.apply.outputs.size }}
           MAX_SIZE: ${{ inputs.auto-implement-max-size }}
+          TRUSTED_ONLY: ${{ inputs.auto-implement-trusted-only }}
         run: |
           set -euo pipefail
           order=(XS S M L XL)
           idx() { local i; for i in "${!order[@]}"; do [[ "${order[$i]}" == "$1" ]] && echo "$i" && return; done; echo 99; }
           if [[ "$RISK" == high || $(idx "$SIZE") -gt $(idx "$MAX_SIZE") ]]; then
             echo "Not auto-implementing (risk=$RISK, size=$SIZE > $MAX_SIZE); a human can add label agent:implement."
+            exit 0
+          fi
+          assoc=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .author_association)
+          if [[ "$TRUSTED_ONLY" == true && ! " OWNER MEMBER COLLABORATOR " == *" $assoc "* ]]; then
+            echo "Not auto-implementing: author is $assoc, not a collaborator; a human can add label agent:implement."
             exit 0
           fi
           gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" -f issue="$ISSUE"
@@ -269,7 +282,7 @@ jobs:
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: transcript-triage-${{ inputs.issue-number }}-${{ github.run_attempt }}
           path: ${{ steps.claude.outputs.execution_file }}

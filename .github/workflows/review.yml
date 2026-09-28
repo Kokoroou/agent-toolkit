@@ -74,7 +74,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/statuses/$(jq -r .headRefOid <<<"$json")" \
             -f state=pending -f context="$CONTEXT" -f description="Claude review running" >/dev/null
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         if: steps.pre.outputs.skip != 'true'
         with:
           ref: ${{ steps.pre.outputs.sha }}
@@ -84,7 +84,7 @@ jobs:
       - name: Claude review
         id: claude
         if: steps.pre.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
         with:
           anthropic_api_key: ${{ secrets.anthropic_api_key }}
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
@@ -97,6 +97,7 @@ jobs:
             --model ${{ inputs.model }}
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Grep,Glob,Task,Agent,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),mcp__github_inline_comment__create_inline_comment"
+            --disallowedTools "WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","risk"],"properties":{"verdict":{"enum":["approve","request-changes","needs-human"]},"summary":{"type":"string","maxLength":4000},"risk":{"enum":["low","medium","high"]}}}'
 
       - name: Publish verdict
@@ -140,7 +141,7 @@ jobs:
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: transcript-review-${{ inputs.pr-number }}-${{ github.run_attempt }}
           path: ${{ steps.claude.outputs.execution_file }}

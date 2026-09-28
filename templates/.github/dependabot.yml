@@ -4,6 +4,8 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
+    cooldown: # wait before adopting a new release (compromised / broken publishes)
+      default-days: 7
     directory: /
     target-branch: develop
     schedule:
@@ -14,6 +16,8 @@ updates:
       actions:
         patterns: ["*"]
   - package-ecosystem: npm   # npm | pip | gomod | cargo | maven | gradle | composer | ...
+    cooldown: # wait before adopting a new release (compromised / broken publishes)
+      default-days: 7
     directory: /
     target-branch: develop
     schedule:

@@ -1,0 +1,15 @@
+# Keeps the actions used by the toolkit's reusable workflows current (Node runtime
+# deprecations, security fixes). The caller templates' own copy lives in templates/.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    cooldown: # wait before adopting a new release (compromised / broken publishes)
+      default-days: 7
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

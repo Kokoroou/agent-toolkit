@@ -350,7 +350,7 @@ if [[ "$settings" == true ]]; then
   else warn "could not set Settings → Actions → Workflow permissions (do it by hand)"; fi
   allowed=$(gh api "repos/$repo/actions/permissions" --jq '"\(.enabled) \(.allowed_actions // "all")"' 2>/dev/null || echo "? ?")
   [[ "$allowed" == "true all" ]] \
-    || warn "Actions are restricted ($allowed) — allow kokoroou/agent-toolkit/*, anthropics/*, actions/*, googleapis/release-please-action@*"
+    || warn "Actions are restricted ($allowed) — allow kokoroou/agent-toolkit/*, anthropics/*, actions/*, googleapis/release-please-action@*, gitleaks/gitleaks-action@*, oven-sh/setup-bun@*"
   if gh api -X PATCH "repos/$repo" -F allow_squash_merge=true -F delete_branch_on_merge=true >/dev/null; then
     ok "squash merge on, delete head branches on merge"
   else warn "could not enable squash merge"; fi

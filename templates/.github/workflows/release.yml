@@ -20,4 +20,7 @@ jobs:
       # setup-command: npm ci
       # build-command: npm run build && tar czf dist.tgz dist
       # artifact-paths: dist.tgz
-    secrets: inherit
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}
