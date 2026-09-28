@@ -32,7 +32,8 @@ Mục lục:
 | `templates/` | File bootstrap chép vào dự án (caller workflow, issue/PR template, nhãn, `CLAUDE.md`) | `scripts/bootstrap.sh` |
 | `workflows/ci-doctor.md` | Workflow gh-aw | `gh aw add kokoroou/agent-toolkit/ci-doctor` |
 | `scripts/install.sh`, `scripts/install.ps1` | Cài một lệnh: công cụ, bootstrap, secret, settings, commit (bản `.ps1` chỉ cài git/gh rồi chạy `install.sh` bằng Git Bash) | Người dùng, qua `curl …/main/scripts/install.sh \| bash` |
-| `scripts/bootstrap.sh`, `scripts/lint.sh` | Chép template + preset `--stack`, nhãn, `develop`; kiểm tra toolkit | `install.sh` / người dùng; CI + bạn |
+| `scripts/bootstrap.sh`, `scripts/lint.sh` | Chép template + preset `--stack`, nhãn, `develop`, ghi `.github/agent-toolkit.lock`; kiểm tra toolkit | `install.sh` / người dùng; CI + bạn |
+| `scripts/upgrade.sh` | Nâng cấp file đã chép trong dự án: sinh lại bản cũ (theo lock) và bản mới bằng `bootstrap.sh`, 3-way merge | Người dùng, qua `curl …/main/scripts/upgrade.sh \| bash` |
 | `release-please-config.json`, `.release-please-manifest.json`, `version.txt`, `CHANGELOG.md` | Cấu hình và trạng thái phát hành | release-please |
 | `docs/` | Tài liệu | |
 
@@ -199,6 +200,19 @@ còn template và `bootstrap.sh` được clone theo `--ref` của họ (mặc �
 `install.sh` trên `main` phải chạy được với `bootstrap.sh` của mọi tag còn được ghim:
 dùng tuỳ chọn mới của bootstrap chỉ sau khi kiểm tra nó có (như cách `--stack` được dò
 bằng `grep`), và đừng đổi tên tham số/biến môi trường đã công bố.
+
+`scripts/upgrade.sh` cũng chạy từ `main`, và chạy `bootstrap.sh` của **cả bản cũ lẫn bản
+mới** để sinh file. Vì vậy:
+
+- Giữ `bootstrap.sh <path> --ref <r> [--stack <s>] --no-labels` chạy được, với
+  `AGENT_TOOLKIT_QUIET_NEXT_STEPS=1`, ở mọi phiên bản.
+- Định dạng `.github/agent-toolkit.lock` (`version=`, `ref=`, `commit=`, `stack=`,
+  `managed=`) là giao diện công khai: chỉ thêm khoá mới, không đổi nghĩa khoá cũ.
+- Đổi template là việc bình thường (người dùng nhận qua 3-way merge), nhưng hạn chế sửa
+  những dòng người dùng hay chỉnh (các khối `edit for your stack`) để tránh xung đột;
+  đổi tên/xoá file template cần ghi rõ trong CHANGELOG.
+- `lint.sh` có bài test nâng cấp giữa hai commit (sửa cục bộ, sửa upstream, xung đột, file
+  mới) — chạy nó sau mọi thay đổi ở `bootstrap.sh` hoặc `upgrade.sh`.
 
 Plugin được cài từ `toolkit-marketplace` (mặc định nhánh mặc định, tức `main`), **không**
 theo tag mà dự án ghim. Vì vậy thay đổi plugin phải tương thích ngược với các reusable

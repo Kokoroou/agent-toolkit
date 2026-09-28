@@ -193,10 +193,13 @@ gọi nó rồi làm tiếp secret, settings và commit.
    khối `edit for your stack`, `dependabot.yml`, `release.yml` và mục *Commands* của `CLAUDE.md`.
 3. Tạo ~24 nhãn (`needs-triage`, `agent`, `risk:high`, `size:M`…) — chạy lại an toàn.
 4. Tạo branch `develop` từ default branch nếu chưa có.
+5. Ghi `.github/agent-toolkit.lock` (bản toolkit, stack, danh sách file nó quản lý) để
+   `upgrade.sh` nâng cấp được về sau (§10).
 
 ### 2.3 Repo đã có sẵn file
 
-Bootstrap in danh sách `Kept existing`. Với từng file:
+Bootstrap in danh sách `Kept existing`. Các file này thuộc về dự án: bootstrap và
+`upgrade.sh` không bao giờ ghi đè chúng (§10.4). Với từng file:
 
 - **`ci.yml` riêng**: có thể giữ CI cũ, nhưng workflow phải tên **`CI`** (merge gate và
   vòng fix tìm theo tên này), có `workflow_dispatch:` và chạy trên `pull_request` vào
@@ -467,27 +470,83 @@ Commits (`feat:` → minor, `fix:` → patch, `feat!:` → major); CI đã kiể
     toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#v0
   ```
 
-Nâng cấp (ví dụ `v0` → `v1`):
+### 10.1 Có hai thứ cần nâng cấp
+
+| Thứ | Nằm ở đâu | Nâng cấp thế nào |
+|---|---|---|
+| Logic pipeline (reusable workflow, plugin) | Trong toolkit, dự án gọi bằng `uses: …@v0` | **Tự động** ở run kế tiếp khi toolkit phát hành trong cùng major (`v0`). Sang major mới: `upgrade.sh --to v1` |
+| File đã chép vào dự án (caller workflow, issue/PR template, `dependabot.yml`) | Trong repo dự án | `upgrade.sh` — khi CHANGELOG nói template có input/trigger/nhãn mới |
+
+### 10.2 Lệnh nâng cấp
+
+Trong thư mục clone của dự án, đứng ở default branch, không có thay đổi chưa commit
+trong `.github/`:
 
 ```bash
-cd ~/code/my-project
-grep -rl 'kokoroou/agent-toolkit/.github/workflows/' .github/workflows \
-  | xargs sed -i 's#\(kokoroou/agent-toolkit/\.github/workflows/[a-z-]*\.yml\)@v0#\1@v1#'
-git diff    # đọc CHANGELOG của toolkit để biết input nào đổi
+# xem trước, không ghi gì
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
+# áp dụng: bản mới nhất của major đang ghim (v0), hoặc --to v1 / --to v0.3.0
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --to v1
+git diff && git add .github && git commit -m "ci: upgrade agent-toolkit to v1"
 ```
 
-Muốn lấy template mới (input mới, trigger mới), chạy lại bootstrap vào một thư mục tạm
-và so sánh:
-
-```bash
-git clone -q https://github.com/kokoroou/agent-toolkit /tmp/agent-toolkit-new
-tmp=$(mktemp -d) && git -C "$tmp" init -q
-/tmp/agent-toolkit-new/scripts/bootstrap.sh "$tmp" --ref v1 --no-labels
-diff -ru "$tmp/.github" .github
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) upgrade --to v1
 ```
 
-(`--no-labels` vì thư mục tạm không có remote GitHub. Nhãn mới, nếu có, tạo bằng cách
-chạy lại bootstrap vào repo thật mà không `--force`: file đã có được giữ nguyên.)
+Script không commit; nó in bảng từng file, CHANGELOG từ bản đang cài tới bản mới và cập
+nhật nhãn (`--no-labels` để bỏ). Thoát mã `1` nếu còn xung đột.
+
+### 10.3 Cách script giữ lại chỉnh sửa của bạn
+
+`bootstrap.sh` (và `install.sh`) ghi **`.github/agent-toolkit.lock`** — hãy commit file
+này, và đừng sửa tay ngoài các dòng `managed=` (§10.4):
+
+```
+version=0.1.0              # bản toolkit đã sinh ra các file
+ref=v0                     # --ref đã ghim
+commit=45c2ae5…            # commit chính xác của toolkit
+stack=python               # --stack đã dùng
+managed=.github/workflows/ci.yml   # file do toolkit quản lý (một dòng mỗi file)
+```
+
+Khi nâng cấp, script sinh lại file của **bản cũ** (commit + stack trong lock) và của
+**bản mới**, rồi với từng file *managed* so ba phía — như `git merge`:
+
+| Bản của bạn so với bản cũ | Toolkit đổi file? | Kết quả |
+|---|---|---|
+| Chưa sửa | có | `↑` thay bằng bản mới |
+| Đã sửa (vd khối `edit for your stack`) | không | `=` giữ nguyên |
+| Đã sửa | có, ở chỗ khác | `~` bản mới + chỉnh sửa của bạn (`git merge-file`) |
+| Đã sửa | có, **cùng dòng** | `!` xung đột: file chứa `<<<<<<< yours` … `>>>>>>> agent-toolkit v1`, sửa tay |
+| Không có (file mới của toolkit) | — | `+` thêm, ghi vào `managed=` |
+| Bạn đã xoá | — | không thêm lại |
+| Toolkit bỏ file | — | xoá nếu bạn chưa sửa, ngược lại giữ và báo `!` |
+
+Để nâng cấp không xung đột: chỉ sửa giá trị trong các khối `edit for your stack` và các
+input của `with:`; muốn thêm bước riêng thì viết workflow riêng thay vì sửa caller.
+
+### 10.4 File trùng tên — ai sở hữu file nào
+
+| Loại | File | Khi nâng cấp |
+|---|---|---|
+| **Toolkit quản lý** | file bootstrap đã chép (dòng `managed=` trong lock) | 3-way merge như trên |
+| **Của dự án** | file đã có **trước** khi cài (bootstrap báo `Kept existing`), vd `ci.yml` hay issue template riêng | không bao giờ bị ghi; nếu template tương ứng đổi, script báo `·` để bạn tự gộp |
+| **Chỉ sinh lần đầu** | `CLAUDE.md` | không bao giờ bị ghi; script đưa link so sánh nếu template đổi |
+
+Muốn chuyển một file của dự án sang cho toolkit quản lý: xoá file, chạy lại
+`bootstrap.sh --ref <ref đang dùng>` (không `--force`), gộp lại phần riêng rồi commit.
+Muốn toolkit thôi quản lý một file: xoá dòng `managed=` của nó trong lock.
+
+### 10.5 Dự án cài trước khi có lock
+
+Script tự dò: đọc `@ref` trong `uses:`, sinh file của từng bản phát hành gần đây và chọn
+bản khớp với repo nhiều nhất (in `guessed: N identical files`). Chỉ caller có `uses:
+kokoroou/agent-toolkit/…` và file còn y nguyên được coi là toolkit quản lý. Chắc chắn hơn:
+chỉ rõ `--from v0.1.0` (và `--stack` nếu đã chọn stack khác bản nhận diện). File không xác
+định được bản gốc được giữ nguyên, bản mới đặt cạnh ở `<file>.upstream` để so sánh — gộp
+tay rồi xoá file `.upstream`. Sau lần nâng cấp đầu, lock được tạo và các lần sau không
+cần dò nữa.
 
 ## 11. Vận hành hằng ngày
 

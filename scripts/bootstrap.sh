@@ -7,11 +7,12 @@
 # skeleton; pins every `uses: kokoroou/agent-toolkit/...@main` to --ref; fills in the
 # stack-specific commands (--stack auto|node|pnpm|yarn|python|go|none; auto detects from
 # the project's files); creates the label taxonomy and the develop branch with gh.
-# Existing files are kept unless --force. For the full one-command setup (tools,
-# secrets, repo settings, commit) use scripts/install.sh instead.
+# Existing files are kept unless --force. Records the toolkit version, --stack and the
+# copied files in .github/agent-toolkit.lock for scripts/upgrade.sh. For the full
+# one-command setup (tools, secrets, repo settings, commit) use scripts/install.sh.
 set -euo pipefail
 
-usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 target="" ref="main" stack="auto" force=false labels=true detect_only=false
 while [[ $# -gt 0 ]]; do
@@ -149,6 +150,31 @@ if [[ ${#copied[@]} -gt 0 ]]; then printf '  + %s\n' "${copied[@]}"; fi
 if [[ ${#skipped[@]} -gt 0 ]]; then
   echo "Kept existing (${#skipped[@]}, use --force to overwrite):"; printf '  = %s\n' "${skipped[@]}"
 fi
+
+# ── install record ──────────────────────────────────────────────────────────────
+# .github/agent-toolkit.lock tells scripts/upgrade.sh which toolkit commit and --stack
+# produced the files, so it can regenerate them and 3-way merge local edits. managed=
+# lists the files the toolkit owns: the ones copied here, minus CLAUDE.md (yours after
+# the first install). Kept existing files stay project-owned. Re-running without --force
+# only adds newly copied files to an existing record.
+lock="$target/.github/agent-toolkit.lock"
+{
+  if [[ -f "$lock" && "$force" != true ]]; then
+    cat "$lock"
+  else
+    echo "# Written by agent-toolkit (scripts/bootstrap.sh, scripts/upgrade.sh). Do not edit:"
+    echo "# scripts/upgrade.sh regenerates the files of this commit + stack to merge your edits."
+    echo "version=$(cat "$toolkit/version.txt" 2>/dev/null || true)"
+    echo "ref=$ref"
+    commit=""
+    if [[ "$(git -C "$toolkit" rev-parse --show-toplevel 2>/dev/null)" == "$(cd "$toolkit" && pwd -P)" ]]; then
+      commit=$(git -C "$toolkit" rev-parse -q --verify HEAD || true)
+    fi
+    echo "commit=$commit"
+    echo "stack=$stack"
+  fi
+  for f in ${copied[@]+"${copied[@]}"}; do [[ "$f" == CLAUDE.md ]] || echo "managed=$f"; done
+} | awk '!/^managed=/ || !seen[$0]++' >"$lock.tmp" && mv "$lock.tmp" "$lock"
 
 # ── labels + develop branch ─────────────────────────────────────────────────────
 # labels.json keeps one {"name", "color", "description"} object per line (checked by

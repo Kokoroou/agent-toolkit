@@ -2,10 +2,12 @@
 #
 #   irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) --stack python --ref v0
+#   & ([scriptblock]::Create((irm .../scripts/install.ps1))) upgrade --to v1   # scripts/upgrade.sh
 #
 # Installs Git for Windows and the GitHub CLI with winget when they are missing, then runs
-# scripts/install.sh with Git Bash in the current directory. Arguments and environment
-# variables are the same as install.sh (see `--help`).
+# scripts/install.sh (or, with `upgrade` first, scripts/upgrade.sh) with Git Bash in the
+# current directory. Arguments and environment variables are the same as that script's
+# (see `--help`).
 
 # Wrapped in a script block so `irm | iex` leaves no variables or preferences behind.
 & {
@@ -38,19 +40,27 @@
     Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $bash) { throw "Git Bash not found next to $((Get-Command git).Source) - reinstall Git for Windows." }
 
-  # Use install.sh next to this file (toolkit checkout) or download it (irm | iex).
-  $local = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'install.sh' } else { $null }
+  # First argument `upgrade` runs upgrade.sh instead of install.sh.
+  $name = 'install.sh'
+  $rest = @($args)
+  if ($rest.Count -gt 0 -and $rest[0] -eq 'upgrade') {
+    $name = 'upgrade.sh'
+    $rest = @($rest | Select-Object -Skip 1)
+  }
+
+  # Use the script next to this file (toolkit checkout) or download it (irm | iex).
+  $local = if ($PSScriptRoot) { Join-Path $PSScriptRoot $name } else { $null }
   if ($local -and (Test-Path $local)) {
     $script = $local -replace '\\', '/'   # bash's dirname needs forward slashes
   } else {
-    $script = Join-Path ([IO.Path]::GetTempPath()) "agent-toolkit-install-$PID.sh"
-    $content = (Invoke-RestMethod "$raw/scripts/install.sh") -replace "`r`n", "`n"
+    $script = Join-Path ([IO.Path]::GetTempPath()) "agent-toolkit-$name-$PID.sh"
+    $content = (Invoke-RestMethod "$raw/scripts/$name") -replace "`r`n", "`n"
     [IO.File]::WriteAllText($script, $content, (New-Object Text.UTF8Encoding $false))
   }
 
   try {
-    & $bash $script @args
-    if ($LASTEXITCODE -ne 0) { throw "install.sh failed (exit code $LASTEXITCODE)" }
+    & $bash $script @rest
+    if ($LASTEXITCODE -ne 0) { throw "$name failed (exit code $LASTEXITCODE)" }
   } finally {
     if (-not ($local -and (Test-Path $local))) { Remove-Item $script -ErrorAction SilentlyContinue }
   }
