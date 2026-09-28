@@ -13,8 +13,11 @@
 #      the default branch.
 # Anything not given as an option or environment variable is asked for; secrets that
 # already exist are kept unless you agree to replace them. --yes never asks (missing
-# secrets are skipped). Values can also come from the file named by
-# AGENT_TOOLKIT_CONFIG (default ~/.config/agent-toolkit/install.env, KEY=value lines).
+# secrets are skipped). Answers can be remembered for the next project: plain values in
+# AGENT_TOOLKIT_CONFIG (default ~/.config/agent-toolkit/install.env, KEY=value lines),
+# tokens only in the OS credential store (macOS Keychain, Linux Secret Service via
+# secret-tool, Windows DPAPI) — never in a plain file. AGENT_TOOLKIT_SECRET_STORE=none
+# turns the credential store off.
 #
 # Options (environment variable in brackets):
 #   --ref <ref>             toolkit version to pin                  [AGENT_TOOLKIT_REF, v0]
@@ -67,19 +70,76 @@ confirm() { # <question> <default y|n>; --yes → default
   [[ "$a" == y || "$a" == yes ]]
 }
 
-# ── options ─────────────────────────────────────────────────────────────────────
+# ── remembered answers ──────────────────────────────────────────────────────────
 config="${AGENT_TOOLKIT_CONFIG:-$HOME/.config/agent-toolkit/install.env}"
+secret_keys="CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY PROJECT_TOKEN"
 if [[ -f "$config" ]]; then
-  # KEY=value lines; only known keys, never executed.
-  while IFS='=' read -r k v; do
-    case "$k" in
-      AGENT_TOOLKIT_REF|AGENT_TOOLKIT_STACK|AGENT_TOOLKIT_CLAUDE_AUTH|CLAUDE_CODE_OAUTH_TOKEN|\
-      ANTHROPIC_API_KEY|AGENT_APP_ID|AGENT_APP_PRIVATE_KEY_FILE|PROJECT_OWNER|PROJECT_NUMBER|PROJECT_TOKEN)
-        v="${v%$'\r'}"; v="${v#\"}"; v="${v%\"}"
-        [[ -z "${!k:-}" ]] && export "$k=$v" ;;
-    esac
-  done < <(grep -E '^[A-Z_]+=' "$config" || true)
+  if [[ -n "$(find "$config" \( -perm -020 -o -perm -002 \) 2>/dev/null)" ]]; then
+    printf '  ! %s is writable by other users — ignored (chmod 600 it)\n' "$config" >&2
+  else
+    # KEY=value lines; only known, non-secret keys, never executed.
+    while IFS='=' read -r k v; do
+      v="${v%$'\r'}"; v="${v#\"}"; v="${v%\"}"
+      case "$k" in
+        AGENT_TOOLKIT_REF|AGENT_TOOLKIT_STACK|AGENT_TOOLKIT_CLAUDE_AUTH|AGENT_APP_ID|\
+        AGENT_APP_PRIVATE_KEY_FILE|PROJECT_OWNER|PROJECT_NUMBER)
+          [[ -z "${!k:-}" ]] && export "$k=$v" ;;
+        CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|PROJECT_TOKEN|AGENT_APP_PRIVATE_KEY)
+          printf '  ! %s holds %s in plain text — ignored; delete that line (tokens go to the OS credential store)\n' \
+            "$config" "$k" >&2 ;;
+      esac
+    done < <(grep -E '^[A-Z_]+=' "$config" || true)
+  fi
 fi
+
+# OS credential store: store_backend prints keychain|secret-tool|dpapi, or nothing.
+# Values always travel on stdin, never on a command line (visible in `ps`).
+store_dir="$HOME/.config/agent-toolkit"
+store_backend() {
+  [[ "${AGENT_TOOLKIT_SECRET_STORE:-}" == none ]] && return 0
+  case "$(uname -s)" in
+    Darwin) command -v security >/dev/null && echo keychain ;;
+    MINGW*|MSYS*|CYGWIN*) command -v powershell.exe >/dev/null && command -v cygpath >/dev/null && echo dpapi ;;
+    *) [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && command -v secret-tool >/dev/null && echo secret-tool ;;
+  esac
+  return 0
+}
+store_get() { # <name> → value on stdout (empty if absent)
+  case "$(store_backend)" in
+    keychain) security find-generic-password -s agent-toolkit -a "$1" -w 2>/dev/null ;;
+    secret-tool) secret-tool lookup service agent-toolkit account "$1" 2>/dev/null ;;
+    dpapi)
+      [[ -f "$store_dir/$1.dpapi" ]] || return 0
+      # DPAPI: only this Windows user on this machine can decrypt.
+      # shellcheck disable=SC2016 # PowerShell code, not bash
+      powershell.exe -NoProfile -NonInteractive -Command '
+        $s = ConvertTo-SecureString ([Console]::In.ReadToEnd().Trim())
+        [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))' \
+        <"$store_dir/$1.dpapi" 2>/dev/null | tr -d '\r' ;;
+  esac
+  return 0
+}
+store_set() { # <name> <value>
+  case "$(store_backend)" in
+    keychain)
+      # `security -i` reads its command from stdin; tokens are [A-Za-z0-9._~+/=-] only.
+      [[ "$2" =~ ^[A-Za-z0-9._~+/=-]+$ ]] || return 1
+      printf 'add-generic-password -U -s agent-toolkit -a %s -l agent-toolkit-%s -w %s\n' "$1" "$1" "$2" \
+        | security -i >/dev/null ;;
+    secret-tool)
+      printf '%s' "$2" | secret-tool store --label="agent-toolkit $1" service agent-toolkit account "$1" ;;
+    dpapi)
+      mkdir -p "$store_dir"
+      # shellcheck disable=SC2016 # PowerShell code, not bash
+      printf '%s' "$2" | powershell.exe -NoProfile -NonInteractive -Command '
+        ConvertTo-SecureString ([Console]::In.ReadToEnd()) -AsPlainText -Force | ConvertFrom-SecureString' \
+        | tr -d '\r' >"$store_dir/$1.dpapi" ;;
+    *) return 1 ;;
+  esac
+}
+for k in $secret_keys; do
+  if [[ -z "${!k:-}" ]]; then v=$(store_get "$k"); [[ -n "$v" ]] && export "$k=$v"; fi
+done
 
 target="." ref="${AGENT_TOOLKIT_REF:-v0}" stack="${AGENT_TOOLKIT_STACK:-auto}"
 claude_auth="${AGENT_TOOLKIT_CLAUDE_AUTH:-}"
@@ -347,16 +407,27 @@ if [[ "$default_branch" != develop && "$settings" == true ]]; then
 fi
 
 # ── 7. remember answers ─────────────────────────────────────────────────────────
-if [[ "$interactive" == true && ! -f "$config" ]] \
-   && [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}${AGENT_APP_ID:-}" ]] \
-   && confirm "Save these answers to $config (plain text, mode 600) so the next project needs no input?" n; then
-  mkdir -p "$(dirname "$config")"
-  ( umask 077
-    for k in AGENT_TOOLKIT_REF CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY AGENT_APP_ID AGENT_APP_PRIVATE_KEY_FILE PROJECT_OWNER PROJECT_TOKEN; do
-      [[ "$k" == AGENT_TOOLKIT_REF ]] && v="$ref" || v="${!k:-}"
-      [[ -n "$v" ]] && printf '%s=%s\n' "$k" "$v"
-    done >"$config" )
-  ok "saved $config"
+# Plain values → config file; tokens → OS credential store (or nowhere).
+backend=$(store_backend)
+unsaved=""
+for k in $secret_keys; do [[ -n "${!k:-}" && -z "$(store_get "$k")" ]] && unsaved+="$k "; done
+if [[ "$interactive" == true && ( -n "$unsaved" || ( ! -f "$config" && -n "${AGENT_APP_ID:-}" ) ) ]]; then
+  if [[ -n "$backend" ]]; then where="tokens → $backend, other values → $config"
+  else where="$config; no OS credential store found, so tokens are NOT saved"; fi
+  if confirm "Remember these answers for your next project ($where)?" n; then
+    mkdir -p "$(dirname "$config")"
+    ( umask 077
+      for k in AGENT_TOOLKIT_REF AGENT_APP_ID AGENT_APP_PRIVATE_KEY_FILE PROJECT_OWNER; do
+        [[ "$k" == AGENT_TOOLKIT_REF ]] && v="$ref" || v="${!k:-}"
+        if [[ -n "$v" ]]; then printf '%s=%s\n' "$k" "$v"; fi
+      done >"$config" )
+    chmod 600 "$config" 2>/dev/null || true
+    ok "saved $config"
+    for k in $unsaved; do
+      if [[ -n "$backend" ]] && store_set "$k" "${!k}"; then ok "$k saved in $backend"
+      else warn "$k not saved — it will be asked again (or pass it as an environment variable)"; fi
+    done
+  fi
 fi
 
 # ── summary ─────────────────────────────────────────────────────────────────────

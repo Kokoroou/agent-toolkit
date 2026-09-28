@@ -57,11 +57,33 @@ nhập Claude và token (nhập ẩn; có thể để script chạy `claude setu
 đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
 branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
 
-**Không phải nhập lại cho dự án sau.** Cuối lần chạy đầu, script đề nghị lưu câu trả lời
-vào `~/.config/agent-toolkit/install.env` (quyền `600`, dạng `KEY=value`, chứa token dạng
-văn bản thường — chỉ đồng ý trên máy của riêng bạn). Từ dự án thứ hai, lệnh ở trên gần
-như không hỏi gì. Có thể tự viết file này, hoặc trỏ tới file khác bằng biến
-`AGENT_TOOLKIT_CONFIG`.
+**Không phải nhập lại cho dự án sau.** Cuối lần chạy đầu, script đề nghị nhớ câu trả lời:
+
+| Loại | Lưu ở đâu |
+|---|---|
+| Token (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `PROJECT_TOKEN`) | Kho khoá của hệ điều hành, mục `agent-toolkit`: **macOS Keychain**; **Linux** Secret Service (GNOME Keyring/KWallet, qua `secret-tool` — gói `libsecret-tools`, cần phiên desktop); **Windows** file `~/.config/agent-toolkit/<TÊN>.dpapi` mã hoá bằng DPAPI (chỉ tài khoản Windows của bạn trên máy đó giải mã được). Không có kho khoá (vd máy chủ không desktop, WSL) thì token **không được lưu** và sẽ được hỏi lại. |
+| App ID, đường dẫn file `.pem`, `--ref`, project owner | `~/.config/agent-toolkit/install.env` (quyền `600`, dạng `KEY=value`, không có bí mật) |
+
+Từ dự án thứ hai, lệnh ở trên gần như không hỏi gì. Một số lớp bảo vệ khác:
+
+- Token không bao giờ được ghi ra file thường hay truyền trên dòng lệnh (không lộ qua
+  `ps`); script đưa chúng vào `gh secret set` và kho khoá qua stdin.
+- `install.env` chỉ được đọc như dữ liệu (không `source`), chỉ nhận các khoá đã biết; dòng
+  chứa token bị bỏ qua kèm cảnh báo; file mà người dùng khác ghi được thì bị bỏ qua cả file.
+- Private key của App không được sao chép — chỉ lưu đường dẫn tới file `.pem` của bạn.
+  Nên để file này trong thư mục riêng (`chmod 600`), hoặc xoá sau khi đã cài xong mọi repo.
+- Kho khoá chống lộ qua backup, đồng bộ thư mục, commit nhầm hay người dùng khác trên máy,
+  nhưng **không** chống được mã độc chạy dưới chính tài khoản của bạn. Muốn chặt hơn: đặt
+  `AGENT_TOOLKIT_SECRET_STORE=none` và lấy token từ password manager mỗi lần chạy, ví dụ
+  `CLAUDE_CODE_OAUTH_TOKEN=$(op read op://Private/claude/token) bash install.sh`
+  (1Password; tương tự `bw get password …`, `pass show …`).
+- Xoá token đã lưu: macOS `security delete-generic-password -s agent-toolkit -a <TÊN>`;
+  Linux `secret-tool clear service agent-toolkit account <TÊN>`; Windows xoá file `.dpapi`.
+- Token Claude chỉ cần để đặt secret cho repo; nếu lộ, thu hồi ở
+  [Claude Console](https://platform.claude.com/settings/keys) (API key) hoặc tạo lại bằng
+  `claude setup-token`, rồi chạy lại script để cập nhật.
+
+`AGENT_TOOLKIT_CONFIG` trỏ tới file config khác nếu cần.
 
 **Chạy không hỏi (CI, script của bạn):** truyền giá trị bằng tham số hoặc biến môi
 trường và thêm `--yes`:
