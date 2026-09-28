@@ -3,7 +3,7 @@ description: Review a pull request with the reviewer sub-agent, post inline comm
 argument-hint: <pr-number>
 ---
 
-Review pull request **#$1**.
+Review pull request **#$ARGUMENTS**.
 
 1. Delegate to the **reviewer** sub-agent with the PR number.
 2. For each blocking finding it reports, post one inline comment on the exact line with
