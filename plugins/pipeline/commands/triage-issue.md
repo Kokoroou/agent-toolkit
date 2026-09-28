@@ -17,26 +17,28 @@ and posts comments from your structured output. Do not comment, label or edit an
    - **Constraints** — scope boundaries, compatibility, performance or tech limits (may be "none").
    - **Acceptance criteria** — concrete, testable statements. Vague ones ("works well",
      "fast") do not count.
-4. Check the intent with the **5W**; an issue can have all three template parts and still
-   leave one of these open:
-   - **What** — the exact change or behaviour expected (the outcome, not a solution guess).
-   - **Why** — the motivation or problem behind it; it decides trade-offs and priority.
-   - **Who** — which users, roles or systems are affected or use it.
-   - **Where** — which part of the product / code / environment (screen, endpoint, module,
-     platforms); what is out of scope.
-   - **When** — the trigger or conditions (event, state, edge cases) and any deadline or ordering.
-   A W that is obvious from the issue or the code needs no question.
+4. Check the **intent**, not just the form: an issue can have all three template parts and
+   still leave open what the author really wants. Use whichever questioning technique fits
+   the gap, and mix them freely — for example:
+   - **Socratic questioning** — clarify terms ("what do you mean by *fast*?"), surface
+     assumptions, ask for evidence or a concrete example, explore consequences and
+     alternatives ("if X, what should happen to Y?").
+   - **5 Whys** — dig from the requested solution down to the underlying problem.
+   - **5W1H** — a coverage check: what, why, who, where, when, how.
+   - **Examples and counter-examples** — "should input A give B? what about edge case C?"
+   - **Either/or trade-offs** — offer 2–3 concrete options when the author must choose.
+   Anything obvious from the issue, earlier answers or the code needs no question.
 5. Score readiness 0–5: +2 testable acceptance criteria, +1 clear goal, +1 constraints
    stated, +1 scope fits one PR (size ≤ L). ≥ 4 is ready.
 6. Decide:
-   - `ready` — score ≥ 4, no W that changes what gets built is still open, not a
-     duplicate, fits one PR. Rewrite the acceptance criteria
-     as a clean checklist in `acceptance_criteria`.
-   - `clarify` — something essential is missing (a template part or a W that changes what
-     gets built) **and** rounds used < max rounds. Ask at most 3 specific questions, each
-     answerable in one line, most important W first; start each with its W, e.g.
-     `**Who** — …`. Later rounds dig into what the previous answers left open. Never
-     re-ask what was already answered (in comments or in the edited issue body).
+   - `ready` — score ≥ 4, no open question that changes what gets built, not a
+     duplicate, fits one PR. Rewrite the acceptance criteria as a clean checklist in
+     `acceptance_criteria`.
+   - `clarify` — something essential is missing (a template part, or an open point of
+     intent that changes what gets built) **and** rounds used < max rounds. Ask at most 3
+     specific questions with short answers, most important first. Later rounds build on
+     the previous answers and dig into what they left open. Never re-ask what was already
+     answered (in comments or in the edited issue body).
    - `needs-human` — rounds exhausted, needs a product/design decision, too large
      (XL → suggest a split in `summary`), or risk:high with unclear criteria.
    - `reject` — duplicate (name it in `duplicate_of`), spam, or not actionable.

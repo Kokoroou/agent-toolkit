@@ -35,7 +35,7 @@ Ký hiệu: ✅ đã có trong repo · 👤 bạn cần làm trên GitHub/máy (
 - ✅ Issue template có cấu trúc (Goal / Constraints / Acceptance criteria), feature + bug.
 - ✅ Nhãn chuẩn ([`templates/.github/labels.json`](../templates/.github/labels.json)), `bootstrap.sh` tạo sẵn.
 - ✅ `triage.yml`: chạy khi mở/sửa issue, khi có nhãn `needs-triage`, khi tác giả trả lời
-  `awaiting-clarification`, và quét 6 giờ/lần. Tối đa `max-rounds` (5, theo 5W) vòng hỏi,
+  `awaiting-clarification`, và quét 6 giờ/lần. Tối đa `max-rounds` (5) vòng hỏi làm rõ ý định,
   đếm bằng marker ẩn trong comment của bot, reset sau mỗi kết luận → quá thì `needs-human`.
   Sửa issue `ready-for-plan` → triage lại; đóng issue → build/merge dừng. Chấm điểm 0–5, gắn type/priority/risk/size.
 

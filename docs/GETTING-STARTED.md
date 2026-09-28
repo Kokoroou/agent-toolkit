@@ -28,7 +28,7 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 ```
 
 - Bạn mở issue theo template (Goal / Constraints / Acceptance criteria).
-- **Triage** đọc issue, hỏi lại tối đa 5 vòng (theo 5W) nếu thiếu thông tin, rồi gắn nhãn
+- **Triage** đọc issue, hỏi lại tối đa 5 vòng nếu thiếu thông tin hoặc chưa rõ ý định, rồi gắn nhãn
   `type:*`, `priority:*`, `risk:*`, `size:*`.
 - Issue đủ ý, `risk` khác `high` và `size` ≤ M → **build agent** tạo branch
   `agent/issue-N`, lập kế hoạch, viết code + test, mở PR vào `develop`.
@@ -230,7 +230,7 @@ Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) với repo này (templ
 
 | Kịch bản | Cách làm | Kỳ vọng |
 |---|---|---|
-| Issue thiếu thông tin | Mở issue *Feature* chỉ ghi Goal mơ hồ, Acceptance criteria "làm cho tốt" | Nhãn `awaiting-clarification` + ≤3 câu hỏi (gắn với What/Why/Who/Where/When). Trả lời bằng comment → triage chạy lại |
+| Issue thiếu thông tin | Mở issue *Feature* chỉ ghi Goal mơ hồ, Acceptance criteria "làm cho tốt" | Nhãn `awaiting-clarification` + ≤3 câu hỏi/vòng (Socratic, 5 Whys, 5W1H, ví dụ/phản ví dụ… tuỳ chỗ hổng). Trả lời bằng comment → triage chạy lại |
 | Không trả lời đủ | Trả lời lạc đề 5 lần | Nhãn `needs-human`, pipeline dừng |
 | Đổi yêu cầu | Sửa nội dung issue đã `ready-for-plan` | Triage chạy lại, đếm vòng hỏi từ 0; PR agent cũ (nếu có) bị gắn `needs-human` |
 | Huỷ | Đóng issue | Build đang chạy không push/mở PR; PR đã mở không được fix hay merge |

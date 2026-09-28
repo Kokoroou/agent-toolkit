@@ -8,7 +8,7 @@
    ▼  agent-triage.yml ─ uses ─▶ triage.yml
    │     Claude (read-only) trả JSON {decision, score, type, priority, risk, size, questions…}
    │     workflow áp nhãn / comment / GitHub Projects theo JSON đó
-   │     ├─ clarify      → awaiting-clarification, hỏi ≤3 câu theo 5W (tối đa max-rounds ≤ 5 vòng)
+   │     ├─ clarify      → awaiting-clarification, hỏi ≤3 câu làm rõ ý định (tối đa max-rounds ≤ 5 vòng)
    │     ├─ needs-human  → dừng
    │     ├─ reject       → comment / đóng nếu trùng
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)

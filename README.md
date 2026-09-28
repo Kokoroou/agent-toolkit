@@ -7,7 +7,7 @@ Dùng chung cho mọi dự án: repo dự án chỉ giữ vài file YAML mỏng 
 ```
 issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
             │                                          │                 │
-            └─ hỏi lại ≤5 vòng (5W)                    └─ fix ≤3 lần ────┴─ fail → needs-human / revert
+            └─ hỏi lại ≤5 vòng                         └─ fix ≤3 lần ────┴─ fail → needs-human / revert
 ```
 
 ## Thành phần
