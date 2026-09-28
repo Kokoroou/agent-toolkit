@@ -1,5 +1,13 @@
 # Kiến trúc pipeline
 
+**Tóm tắt:** issue được *triage* (Claude chỉ trả JSON, bash gắn nhãn) → *build agent* viết
+code trong job chỉ có token đọc, job khác kiểm tra rồi mới push và mở PR → *CI* và
+*reviewer* chạy song song → *merge gate* merge PR xanh vào `develop` hoặc gửi đi sửa (tối đa
+3 lần) → bạn merge `develop` → `main` để phát hành. Mọi lỗi đều dừng ở nhãn `needs-human`.
+Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu cầu và huỷ](#đổi-yêu-cầu-và-huỷ) ·
+[nguyên tắc thiết kế](#nguyên-tắc-thiết-kế) · [bẫy GitHub](#những-bẫy-của-github-đã-được-xử-lý) ·
+[nhãn](#nhãn).
+
 ## Luồng tổng thể
 
 ```
@@ -71,7 +79,7 @@ và `usage-report.yml` cập nhật hằng tuần một issue tổng hợp phút
    smoke fail, không có commit) đều kết thúc bằng nhãn `needs-human`, và mọi workflow
    agent bỏ qua issue/PR mang nhãn đó.
 5. **Toàn bộ logic nằm trong toolkit.** Repo dự án chỉ có caller YAML mỏng + `CLAUDE.md`,
-   nên cập nhật toolkit = cập nhật mọi dự án (hoặc ghim `@v1` để kiểm soát).
+   nên cập nhật toolkit = cập nhật mọi dự án ghim tag di động `@v0` (hoặc ghim `@v0.1.0` để kiểm soát).
 
 ## Những "bẫy" của GitHub đã được xử lý
 

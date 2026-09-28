@@ -1,22 +1,30 @@
 # Thêm agent-toolkit vào một dự án
 
-Hướng dẫn cài pipeline agent vào **một repo dự án** (mới hoặc đã có code). Cách nhanh
-nhất là **một lệnh** ở [mục Cài bằng một lệnh](#cài-bằng-một-lệnh); các mục 1–12 mô tả
-từng bước bên trong, để làm tay hoặc tinh chỉnh sau.
+Hướng dẫn cài pipeline agent vào **một repo dự án** (mới hoặc đã có code).
 
 > Lần đầu dùng toolkit? Làm [GETTING-STARTED.md](GETTING-STARTED.md) trước: lấy thông
 > tin đăng nhập Claude, tạo GitHub App (một lần cho mọi dự án).
+
+**Lộ trình ngắn nhất (~10 phút + thời gian agent chạy):**
+
+1. Chạy [lệnh cài](#cài-bằng-một-lệnh) trong thư mục clone của repo dự án.
+2. Kiểm tra lệnh lint/test/coverage mà script điền theo stack → [§3](#3-sửa-workflow-cho-stack-của-dự-án).
+3. Điền `CLAUDE.md` (lệnh, kiến trúc, chỗ không được sửa) → [§4](#4-viết-claudemd).
+4. Mở một issue nhỏ và xem nó đi hết vòng → [§8](#8-commit-và-kiểm-tra).
+
+Các mục 1–9 mô tả từng bước mà lệnh cài làm bên trong, để làm tay hoặc tinh chỉnh sau.
+Mục 10–12 dùng về sau: nâng cấp, vận hành hằng ngày, xử lý sự cố.
 
 Mục lục:
 
 - [Cài bằng một lệnh](#cài-bằng-một-lệnh)
 0. [Checklist](#0-checklist)
 1. [Chuẩn bị repo](#1-chuẩn-bị-repo)
-2. [Chạy bootstrap](#2-chạy-bootstrap)
+2. [Chạy bootstrap](#2-chạy-bootstrap) *(cài tay)*
 3. [Sửa workflow cho stack của dự án](#3-sửa-workflow-cho-stack-của-dự-án)
 4. [Viết `CLAUDE.md`](#4-viết-claudemd)
-5. [Thêm secrets](#5-thêm-secrets)
-6. [Cấu hình Settings của repo](#6-cấu-hình-settings-của-repo)
+5. [Thêm secrets](#5-thêm-secrets) *(cài tay)*
+6. [Cấu hình Settings của repo](#6-cấu-hình-settings-của-repo) *(cài tay)*
 7. [Chọn default branch](#7-chọn-default-branch)
 8. [Commit và kiểm tra](#8-commit-và-kiểm-tra)
 9. [Tuỳ chọn: Projects, Dependabot, ci-doctor, release](#9-tuỳ-chọn)
@@ -28,8 +36,8 @@ Mục lục:
 
 ## Cài bằng một lệnh
 
-Đứng trong thư mục clone của repo dự án (repo đã có trên GitHub, có ít nhất một commit,
-bạn có quyền admin) rồi chạy:
+Điều kiện: repo đã có trên GitHub, có ít nhất một commit, bạn có quyền admin. Đứng trong
+thư mục clone của repo dự án rồi chạy:
 
 ```bash
 # Linux, macOS, WSL, Git Bash
@@ -57,7 +65,18 @@ nhập Claude và token (nhập ẩn; có thể để script chạy `claude setu
 đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
 branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
 
-**Không phải nhập lại cho dự án sau.** Cuối lần chạy đầu, script đề nghị nhớ câu trả lời:
+Script chỉ commit khi checkout đang ở default branch và trùng với `origin`; nếu không, nó
+bỏ qua bước commit và nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
+gồm **điền `CLAUDE.md`** (§4), **kiểm tra lệnh theo stack** (§3) và **thử một issue nhỏ**
+(§8). Chạy lại script an toàn: file đã có được giữ, nhãn được cập nhật.
+
+Cần xem trước hoặc sửa script? Clone toolkit rồi chạy `scripts/install.sh` (hoặc
+`scripts/install.ps1`) từ bản clone; `--help` in đầy đủ tuỳ chọn.
+
+<details>
+<summary><b>Script nhớ câu trả lời thế nào — dự án sau gần như không phải nhập lại</b></summary>
+
+Cuối lần chạy đầu, script đề nghị nhớ câu trả lời:
 
 | Loại | Lưu ở đâu |
 |---|---|
@@ -85,8 +104,13 @@ Từ dự án thứ hai, lệnh ở trên gần như không hỏi gì. Một s�
 
 `AGENT_TOOLKIT_CONFIG` trỏ tới file config khác nếu cần.
 
-**Chạy không hỏi (CI, script của bạn):** truyền giá trị bằng tham số hoặc biến môi
-trường và thêm `--yes`:
+</details>
+
+<details>
+<summary><b>Chạy không hỏi (CI, script của bạn) và bảng tham số</b></summary>
+
+Truyền giá trị bằng tham số hoặc biến môi trường và thêm `--yes`. Giá trị truyền theo
+cách này luôn được ghi, kể cả khi secret đã có.
 
 ```bash
 export CLAUDE_CODE_OAUTH_TOKEN=...          # hoặc ANTHROPIC_API_KEY=...
@@ -115,25 +139,20 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 | `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Bỏ qua từng phần; `--force` ghi đè file đã có |
 | `-y`, `--yes` | | Không hỏi gì; secret thiếu thì bỏ qua và báo ở cuối |
 
-Giá trị truyền bằng tham số/biến môi trường luôn được ghi (kể cả khi secret đã có).
-Script chỉ commit khi checkout đang ở default branch và trùng với `origin`; nếu không, nó
-bỏ qua bước commit và nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
-gồm **điền `CLAUDE.md`** (§4), **kiểm tra lệnh theo stack** (§3) và **thử một issue nhỏ**
-(§8). Chạy lại script an toàn: file đã có được giữ, nhãn được cập nhật.
-
-Cần xem trước hoặc sửa script? Clone toolkit rồi chạy `scripts/install.sh` (hoặc
-`scripts/install.ps1`) từ bản clone; `--help` in đầy đủ tuỳ chọn.
+</details>
 
 ## 0. Checklist
 
-- [ ] Repo có ít nhất một commit, lint/test chạy được trên máy
-- [ ] `scripts/bootstrap.sh` đã chạy (file + nhãn + branch `develop`)
-- [ ] Các khối `edit for your stack` đã sửa trong `ci.yml`, `agent-implement.yml`, `agent-merge-gate.yml`
-- [ ] `CLAUDE.md` đã điền
-- [ ] Secret Claude (+ App) đã thêm
-- [ ] Workflow permissions: *Read and write* + *Allow GitHub Actions to create and approve pull requests*
-- [ ] Caller workflow nằm trên **default branch**
-- [ ] Thử một issue nhỏ đi hết vòng
+Mục đánh dấu ⚙ được lệnh cài làm tự động; cài tay thì làm theo mục tương ứng.
+
+- [ ] Repo có ít nhất một commit, lint/test chạy được trên máy (§1)
+- [ ] ⚙ File + nhãn + branch `develop` đã có (§2)
+- [ ] Các khối `edit for your stack` khớp dự án trong `ci.yml`, `agent-implement.yml`, `agent-merge-gate.yml` (§3)
+- [ ] `CLAUDE.md` đã điền (§4)
+- [ ] ⚙ Secret Claude (+ App) đã thêm (§5)
+- [ ] ⚙ Workflow permissions: *Read and write* + *Allow GitHub Actions to create and approve pull requests* (§6)
+- [ ] ⚙ Caller workflow nằm trên **default branch** (§7)
+- [ ] Thử một issue nhỏ đi hết vòng (§8)
 
 ## 1. Chuẩn bị repo
 
@@ -152,6 +171,9 @@ Cần xem trước hoặc sửa script? Clone toolkit rồi chạy `scripts/inst
   **giữ nguyên** file đã có (trừ khi dùng `--force`); bạn cần tự gộp nội dung (xem §2.3).
 
 ## 2. Chạy bootstrap
+
+> Đã dùng [lệnh cài](#cài-bằng-một-lệnh)? Bỏ qua mục này — trừ §2.3 nếu repo có sẵn
+> `ci.yml`, `CLAUDE.md` hay issue template.
 
 ### 2.1 Lệnh
 
@@ -327,6 +349,9 @@ nơi quan trọng nhất để agent làm đúng ý bạn. Giữ ngắn, cụ th
 
 ## 5. Thêm secrets
 
+> Lệnh cài đã đặt secret cho bạn. Mục này dành cho cài tay, đổi token, hoặc thêm
+> `PROJECT_TOKEN` / `GITLEAKS_LICENSE` về sau.
+
 **Repo → Settings → Secrets and variables → Actions → New repository secret**
 (`https://github.com/<owner>/<repo>/settings/secrets/actions`), hoặc bằng CLI
 (chạy trong thư mục repo):
@@ -346,11 +371,14 @@ gh secret list                                 # kiểm tra
 | `PROJECT_TOKEN` | nếu dùng Projects | classic PAT, scope `project` + `repo` |
 | `GITLEAKS_LICENSE` | chỉ repo thuộc organization | đăng ký miễn phí tại gitleaks.io |
 
-Caller workflow dùng `secrets: inherit` nên tên secret phải đúng như bảng (không phân
-biệt hoa thường). Với organization, có thể đặt các secret này ở mức org và chia cho
+Caller workflow truyền từng secret theo tên (`${{ secrets.ANTHROPIC_API_KEY }}`…) nên
+tên secret phải đúng như bảng (không phân biệt hoa thường). Với organization, có thể đặt các secret này ở mức org và chia cho
 nhiều repo.
 
 ## 6. Cấu hình Settings của repo
+
+> Lệnh cài đã bật các mục 1–3 dưới đây (trừ khi dùng `--skip-settings`). Đọc để kiểm tra
+> khi gặp lỗi quyền.
 
 1. **Settings → Actions → General**
    - *Actions permissions*: cho phép actions và reusable workflows (mặc định *Allow all

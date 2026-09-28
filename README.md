@@ -1,8 +1,13 @@
 # agent-toolkit
 
-Pipeline agent-driven **issue → triage → build → PR → CI/review → auto-merge → release**
-cho repo GitHub Free (kể cả private), chạy bằng Claude Code trong GitHub Actions.
-Dùng chung cho mọi dự án: repo dự án chỉ giữ vài file YAML mỏng gọi vào đây.
+**Cho Claude Code tự xử lý issue GitHub: hỏi lại cho rõ, viết code + test, mở PR, review
+và merge — bạn chỉ việc mở issue và duyệt bản phát hành.**
+
+- Chạy trên **GitHub Free**, kể cả repo private, bằng GitHub Actions.
+- Dùng chung cho mọi dự án: repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit này,
+  nên nâng cấp một chỗ là mọi dự án được cập nhật.
+- An toàn mặc định: agent không cầm token ghi, việc rủi ro cao không bao giờ tự merge, mọi
+  lỗi đều dừng lại chờ người (nhãn `needs-human`).
 
 ```
 issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
@@ -10,7 +15,78 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
             └─ hỏi lại ≤5 vòng                         └─ fix ≤3 lần ────┴─ fail → needs-human / revert
 ```
 
-## Thành phần
+## Bắt đầu trong 3 bước
+
+1. **Chuẩn bị một lần** (~15 phút): token Claude + GitHub App →
+   [GETTING-STARTED §4–5](docs/GETTING-STARTED.md#4-chuẩn-bị-thông-tin-đăng-nhập-claude).
+2. **Cài vào dự án** — đứng trong thư mục clone của repo dự án và chạy:
+
+   ```bash
+   # Linux / macOS / WSL
+   curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
+   ```
+
+   ```powershell
+   # Windows
+   irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
+   ```
+
+   Script tự nhận diện stack, chép workflow, tạo nhãn + branch `develop`, đặt secret, bật
+   settings và commit; chỉ hỏi những gì còn thiếu.
+3. **Điền `CLAUDE.md` rồi mở một issue nhỏ** để xem pipeline chạy hết vòng →
+   [ADD-TO-PROJECT §8](docs/ADD-TO-PROJECT.md#8-commit-và-kiểm-tra).
+
+## Đọc gì tiếp theo
+
+| Bạn muốn | Đọc | Thời gian |
+|---|---|---|
+| Hiểu pipeline làm gì, chuẩn bị tài khoản, thử trên sandbox | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | 10 phút đọc |
+| Cài vào một dự án, sửa theo stack, nâng cấp, xử lý sự cố | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) | tra cứu theo mục |
+| Hiểu thiết kế, luồng chi tiết, các "bẫy" GitHub | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 5 phút |
+| Đánh giá rủi ro bảo mật | [SECURITY.md](docs/SECURITY.md) | 5 phút |
+| Sửa / phát hành chính toolkit | [MAINTAINING.md](docs/MAINTAINING.md) | người bảo trì |
+| Lịch sử thi công và trạng thái từng hạng mục | [PLAN.md](docs/PLAN.md) | tham khảo |
+
+## Thuật ngữ
+
+| Từ | Nghĩa |
+|---|---|
+| **Triage** | Agent đọc issue, hỏi lại nếu chưa rõ, rồi gắn nhãn loại / ưu tiên / rủi ro / kích cỡ |
+| **Build agent** | Agent lập kế hoạch (*planner*) rồi viết code + test (*implementer*) trên branch `agent/issue-N` |
+| **Reviewer** | Agent review PR, comment inline, ghi kết quả vào status `agent/review` |
+| **Merge gate** | Workflow thay cho branch protection: PR xanh → squash-merge; PR đỏ → gửi agent sửa |
+| **Circuit breaker** | Sửa quá 3 lần vẫn đỏ → dừng, gắn `needs-human` |
+| **`needs-human`** | Nhãn "đến lượt người": mọi agent bỏ qua issue/PR mang nhãn này |
+| **Caller workflow** | File YAML mỏng trong repo dự án, gọi *reusable workflow* của toolkit bằng `uses: …@v0` |
+| **`@v0`** | Tag di động trỏ tới bản 0.x mới nhất; dự án tự nhận bản vá mà không phải sửa gì |
+
+## Nâng cấp
+
+Logic pipeline tự cập nhật theo tag `@v0`. File đã chép vào dự án thì nâng cấp bằng lệnh
+sau (chỉnh sửa của bạn được giữ nhờ 3-way merge; chi tiết:
+[ADD-TO-PROJECT §10](docs/ADD-TO-PROJECT.md#10-ghim-và-nâng-cấp-phiên-bản-toolkit)):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
+```
+
+## Dùng plugin khi làm việc tay
+
+Các agent của pipeline cũng dùng được trong Claude Code trên máy bạn, không cần workflow
+hay secret:
+
+```bash
+claude plugin marketplace add kokoroou/agent-toolkit
+claude plugin install pipeline@agent-toolkit
+# trong Claude Code: /pipeline:plan-feature 42
+```
+
+Danh sách lệnh: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-dùng-plugin-khi-làm-việc-tay-tuỳ-chọn).
+
+## Trong repo có gì
+
+<details>
+<summary>Bảng thành phần (dành cho người muốn đọc mã)</summary>
 
 | Đường dẫn | Là gì |
 |---|---|
@@ -28,33 +104,8 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 | [`scripts/upgrade.sh`](scripts/upgrade.sh) | Nâng cấp file đã chép trong repo dự án lên bản toolkit mới, giữ chỉnh sửa của bạn bằng 3-way merge |
 | [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
 
-## Bắt đầu nhanh
-
-Lần đầu dùng? Đọc [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) rồi
-[docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md). Trong thư mục clone của repo dự án:
-
-```bash
-# Linux / macOS / WSL
-curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.sh | bash
-```
-
-```powershell
-# Windows
-irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
-```
-
-Script cài `gh` nếu thiếu, nhận diện stack, chép workflow, tạo nhãn + `develop`, đặt
-secret, bật settings của repo và commit; chỉ hỏi những gì chưa có (hoặc truyền bằng tham
-số / biến môi trường với `--yes`).
-
-Nâng cấp sau này (file đã chép + `@ref`, chỉnh sửa của bạn được giữ; xem
-[ADD-TO-PROJECT §10](docs/ADD-TO-PROJECT.md#10-ghim-và-nâng-cấp-phiên-bản-toolkit)):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --dry-run
-```
-
-Một workflow trong repo dự án chỉ cần:
+Một caller workflow trong repo dự án trông như sau (bản đầy đủ ở
+[`templates/.github/workflows/`](templates/.github/workflows)):
 
 ```yaml
 jobs:
@@ -62,24 +113,12 @@ jobs:
     uses: kokoroou/agent-toolkit/.github/workflows/triage.yml@v0
     with:
       issue-number: ${{ github.event.issue.number }}
-    secrets: inherit
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-Dùng plugin khi làm việc tay:
-
-```bash
-claude plugin marketplace add kokoroou/agent-toolkit
-claude plugin install pipeline@agent-toolkit
-# trong Claude Code: /pipeline:plan-feature 42
-```
-
-## Tài liệu
-
-- [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) — lần đầu dùng: công cụ, thông tin đăng nhập Claude, GitHub App, thử trên repo sandbox
-- [docs/ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) — thêm pipeline vào một dự án: bootstrap, sửa theo stack, secret, settings, ghim phiên bản, xử lý sự cố
-- [docs/MAINTAINING.md](docs/MAINTAINING.md) — bảo trì toolkit: phát triển, kiểm thử, phát hành
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — luồng chi tiết, nguyên tắc an toàn, các "bẫy" GitHub đã xử lý
-- [docs/PLAN.md](docs/PLAN.md) — kế hoạch thi công 9 giai đoạn và trạng thái từng mục
+</details>
 
 ## Phát triển toolkit
 

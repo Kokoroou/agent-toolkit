@@ -7,6 +7,19 @@ thêm pipeline vào từng dự án theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md).
 
 > Bạn đang bảo trì chính repo `kokoroou/agent-toolkit`? Xem [MAINTAINING.md](MAINTAINING.md).
 
+**Tóm tắt — việc cần làm một lần (~15 phút):**
+
+| # | Việc | Bắt buộc? | Mục |
+|---|---|---|---|
+| 1 | Cài `gh`, đăng nhập `gh auth login` | ✔ (script cài tự đề nghị) | [§3](#3-cài-công-cụ-trên-máy) |
+| 2 | Lấy token Claude: `claude setup-token` (gói Pro/Max) **hoặc** API key | ✔ | [§4](#4-chuẩn-bị-thông-tin-đăng-nhập-claude) |
+| 3 | Tạo GitHub App, lấy App ID + file `.pem`, cài App vào repo | khuyến nghị mạnh | [§5](#5-tạo-github-app-cho-agent-khuyến-nghị-mạnh) |
+| 4 | Classic PAT cho GitHub Projects | tuỳ chọn | [§6](#6-pat-cho-github-projects-tuỳ-chọn) |
+| 5 | Thử trên một repo sandbox trước dự án thật | nên làm | [§8](#8-chạy-thử-trên-repo-sandbox) |
+
+Xong thì sang [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) — thường chỉ là một lệnh. Thuật ngữ
+(triage, merge gate, `needs-human`…): [README](../README.md#thuật-ngữ).
+
 Mục lục:
 
 1. [Pipeline làm gì](#1-pipeline-làm-gì)
@@ -86,6 +99,10 @@ bước sau, giờ chỉ cần lấy giá trị):
 Lưu giá trị ở nơi an toàn (password manager). Không commit vào repo.
 
 ## 5. Tạo GitHub App cho agent (khuyến nghị mạnh)
+
+**Nói ngắn:** có App thì PR của agent hiện check CI và mọi thứ chạy như người thật push.
+Làm một lần, dùng cho mọi repo: [mở link tạo sẵn](#51-tạo-app) → đặt tên → *Create* →
+ghi App ID + tải private key → *Install* vào repo.
 
 **Vì sao cần:** GitHub không cho sự kiện tạo bằng `GITHUB_TOKEN` (push, mở PR, gắn nhãn,
 merge) kích hoạt workflow khác. Không có App, toolkit vẫn chạy nhờ đường vòng

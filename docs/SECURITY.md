@@ -2,6 +2,15 @@
 
 _Rà soát: 2026-09 · phạm vi: `.github/workflows/*`, `templates/`, `scripts/`, plugin `pipeline`._
 
+**Tóm tắt:**
+
+- Không agent nào vừa đọc nội dung không tin cậy, vừa có token ghi, vừa có kênh ra ngoài:
+  mỗi agent bị cắt ít nhất một chân **bằng cấu hình** ([ma trận](#ma-trận-khả-năng)).
+- Build agent chạy với token **chỉ đọc**; commit được kiểm tra ở job khác rồi mới push.
+- Issue của người ngoài không tự khởi động build; agent không có WebFetch/WebSearch.
+- 12/14 phát hiện đã sửa, 2 được giữ có chủ đích ([bảng](#các-phát-hiện-và-trạng-thái)).
+  Rủi ro còn lại: build agent vẫn có mạng để cài dependency ([chi tiết](#build-agent-3-job)).
+
 ## Mô hình: Lethal Trifecta
 
 Một agent LLM trở nên nguy hiểm khi có **cùng lúc** ba thứ

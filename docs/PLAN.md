@@ -1,5 +1,8 @@
 # Kế hoạch thi công — trạng thái
 
+> Tài liệu lịch sử cho người bảo trì: kế hoạch ban đầu và việc đã làm/khác đi. Muốn
+> **dùng** toolkit thì đọc [GETTING-STARTED.md](GETTING-STARTED.md) thay vì trang này.
+
 Bối cảnh: GitHub Free, repo private, Claude Code làm sub-agent, GitHub Actions làm CI,
 auto-merge hoàn toàn khi CI pass. Toolkit dùng chung: `kokoroou/agent-toolkit`.
 

@@ -7,6 +7,14 @@ dự án đang dùng.
 > Chỉ muốn dùng toolkit? Xem [GETTING-STARTED.md](GETTING-STARTED.md) và
 > [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md).
 
+**Tóm tắt — 5 điều cần nhớ:**
+
+1. Trước khi push: `scripts/lint.sh` phải xanh ([§3](#3-môi-trường-phát-triển)).
+2. Commit/tiêu đề PR theo **Conventional Commits** — release-please tính version từ đó ([§4](#4-quy-trình-thay-đổi)).
+3. Đổi hành vi pipeline → thử trên repo sandbox trước khi merge ([§5](#5-kiểm-thử-trên-repo-sandbox)).
+4. Phát hành = merge release PR do release-please mở; không sửa version bằng tay ([§6](#6-phát-hành)).
+5. Mọi thứ trên `main` tới tay người dùng `@v0` ngay: đổi tên input/nhãn/lệnh là **breaking** ([§7](#7-tương-thích-và-breaking-change)).
+
 Mục lục:
 
 1. [Bố cục repo](#1-bố-cục-repo)
@@ -67,7 +75,7 @@ Quan hệ quan trọng cần nhớ khi sửa:
    (`lint`): release PR do `GITHUB_TOKEN` mở **không** kích hoạt `self-test`, nên check
    không bao giờ xuất hiện và PR bị kẹt — khi đó thêm mình vào *Bypass list* (merge với
    quyền admin) hoặc cấu hình secret `AGENT_APP_ID`/`AGENT_APP_PRIVATE_KEY` cho toolkit
-   (`toolkit-release.yml` truyền `secrets: inherit`, release PR mở bằng App sẽ chạy CI).
+   (`toolkit-release.yml` truyền hai secret này cho `release.yml`, release PR mở bằng App sẽ chạy CI).
 5. **Tags**: không đặt rule chặn cập nhật tag `v*` — `toolkit-release.yml` phải
    force-push tag major (`v0`, `v1`…).
 
@@ -222,8 +230,8 @@ workflow của mọi tag major còn được dùng, hoặc dự án phải ghim 
 
 - **Cập nhật action**: `anthropics/claude-code-action`, `actions/*`,
   `googleapis/release-please-action`, `actions/create-github-app-token` — theo dõi
-  release, đổi version, lint, thử sandbox. (Có thể bật Dependabot cho `github-actions`
-  trong chính repo này.)
+  release, đổi version, lint, thử sandbox. Dependabot (`.github/dependabot.yml`, chờ 7
+  ngày trước khi nhận bản mới) mở PR hằng tuần; bạn chỉ cần review và merge.
 - **Model mặc định**: các input `model` mặc định là alias (`sonnet`) nên tự theo model
   mới; kiểm tra khi Anthropic đổi alias.
 - **ci-doctor**: so với upstream `githubnext/agentics` khi gh-aw có thay đổi lớn.
