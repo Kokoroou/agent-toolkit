@@ -5,6 +5,8 @@
       "release-type": "simple",
       "package-name": "agent-toolkit",
       "include-v-in-tag": true,
+      "initial-version": "0.1.0",
+      "bump-minor-pre-major": true,
       "extra-files": [
         {
           "type": "json",
