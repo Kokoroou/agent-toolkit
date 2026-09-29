@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/Kokoroou/agent-toolkit/compare/v0.3.0...v0.3.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **scripts:** pick gh commands by installed gh version ([1a4fdf7](https://github.com/Kokoroou/agent-toolkit/commit/1a4fdf704e234b413f9330a40491585c2ea50d55))
+* **scripts:** use gh api for labels and secret listing so older gh works ([7a0dc7f](https://github.com/Kokoroou/agent-toolkit/commit/7a0dc7fea14aee5a4ebc45864a1aa8e4f3844aba))
+
 ## [0.3.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.2.0...v0.3.0) (2026-09-29)
 
 
