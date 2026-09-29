@@ -27,7 +27,7 @@ on:
         default: sonnet
       max-turns:
         type: number
-        default: 15
+        default: 25
       timeout-minutes:
         type: number
         default: 10
@@ -396,6 +396,11 @@ jobs:
           jq -r '[.[] | select(.type == "result")] | last // {} |
             "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
             "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
+          # The action hides Claude's output; show denied tool calls, the usual reason a
+          # run ends in error_max_turns, without downloading the transcript.
+          jq -r '[.[] | select(.type == "result")] | last // {} | .permission_denials // [] | .[] |
+            "::warning::Denied \(.tool_name): \(.tool_input.command // .tool_input.file_path // (.tool_input | tostring) | .[0:300])"' \
+            "$EXEC" || true
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
