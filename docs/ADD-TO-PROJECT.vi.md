@@ -496,6 +496,8 @@ Commit cả file `.md` và `.lock.yml` lên default branch.
 Quy trình: merge `develop` → `main` (PR tay) → release-please mở PR "chore(main): release x.y.z"
 → review CHANGELOG → merge → tag + GitHub Release. Commit phải theo Conventional
 Commits (`feat:` → minor, `fix:` → patch, `feat!:` → major); CI đã kiểm tiêu đề PR.
+Các mục trùng nội dung trong cùng một mục (một thay đổi vào `main` qua nhiều commit) được
+gom thành một dòng: `* msg ([30b8c69](…), [bf285b9](…))`.
 
 ## 10. Ghim và nâng cấp phiên bản toolkit
 

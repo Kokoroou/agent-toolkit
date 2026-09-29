@@ -511,6 +511,8 @@ Flow: merge `develop` → `main` (manual PR) → release-please opens a
 "chore(main): release x.y.z" PR → review the CHANGELOG → merge → tag + GitHub Release.
 Commits must follow Conventional Commits (`feat:` → minor, `fix:` → patch, `feat!:` →
 major); CI already checks PR titles.
+Entries with the same message in the same section (one change reaching `main` through
+several commits) are merged into one line: `* msg ([30b8c69](…), [bf285b9](…))`.
 
 ## 10. Pin and upgrade the toolkit version
 
