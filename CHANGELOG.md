@@ -9,11 +9,9 @@
 
 ### Features
 
-* **agent-session:** sandboxed local/cloud sessions with encrypted env and rclone storage ([30b8c69](https://github.com/Kokoroou/agent-toolkit/commit/30b8c6916ea1ff89530caebec7bdd861e42c9cbc))
-* **agent-session:** sandboxed local/cloud sessions with encrypted env and rclone storage ([bf285b9](https://github.com/Kokoroou/agent-toolkit/commit/bf285b9c979d712116a560e0c1280e3b73e357f0))
+* **agent-session:** sandboxed local/cloud sessions with encrypted env and rclone storage ([30b8c69](https://github.com/Kokoroou/agent-toolkit/commit/30b8c6916ea1ff89530caebec7bdd861e42c9cbc), [bf285b9](https://github.com/Kokoroou/agent-toolkit/commit/bf285b9c979d712116a560e0c1280e3b73e357f0))
 * build issues on demand in Claude Code by default ([e9feba9](https://github.com/Kokoroou/agent-toolkit/commit/e9feba975f7204cd957183eacd8fd72ee8113195))
-* **install:** ask whether to skip or overwrite existing project files ([4bc0afa](https://github.com/Kokoroou/agent-toolkit/commit/4bc0afa5748c3a4e099954b6cf38ac3d26f8fefc))
-* **install:** ask whether to skip or overwrite existing project files ([53c3b6e](https://github.com/Kokoroou/agent-toolkit/commit/53c3b6e0880500a1da92d8ac3241198ea65d5e56))
+* **install:** ask whether to skip or overwrite existing project files ([4bc0afa](https://github.com/Kokoroou/agent-toolkit/commit/4bc0afa5748c3a4e099954b6cf38ac3d26f8fefc), [53c3b6e](https://github.com/Kokoroou/agent-toolkit/commit/53c3b6e0880500a1da92d8ac3241198ea65d5e56))
 * **pipeline:** /pipeline:build without arguments proposes a build queue ([25231bc](https://github.com/Kokoroou/agent-toolkit/commit/25231bc8fedb9f73b19185eb666b6eb69aaf8ade))
 
 
