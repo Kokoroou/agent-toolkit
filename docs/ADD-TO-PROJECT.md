@@ -145,7 +145,7 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 | `--project-owner`, `--project-number` | `PROJECT_OWNER`, `PROJECT_NUMBER`, `PROJECT_TOKEN` | GitHub Projects (§9.1) |
 | `--default-develop` / `--keep-default` | | Change / keep the default branch (default: ask, `--yes` → change) |
 | `--commit` / `--no-commit` | | Commit + push, or leave it to you (default: ask, `--yes` → commit) |
-| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Skip each part; `--force` overwrites existing files |
+| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Skip each part; `--force` overwrites existing files (without it the installer lists them and asks — default: keep them) |
 | `-y`, `--yes` | | Ask nothing; missing secrets are skipped and reported at the end |
 
 </details>
