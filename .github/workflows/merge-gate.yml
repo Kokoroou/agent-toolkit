@@ -6,7 +6,10 @@
 # run and commit status on the PR head through the Checks/Statuses APIs and decides:
 #
 #   merged  – everything green → squash-merge, delete branch, close the linked issue
-#   fix     – a check failed on an agent PR → caller should run implement.yml mode=fix
+#   fix     – a check failed on an agent PR and `auto-fix` is on → caller should run
+#             implement.yml mode=fix. With `auto-fix` off (default) the gate comments once
+#             per head commit, asking a person to run `/pipeline:build pr <n>`, and returns
+#             `fix-manual`.
 #   wait    – checks still pending / required status missing
 #   blocked – blocking label, linked issue closed, conflict, bad title → left for a human
 #   skip    – not a PR this gate manages
@@ -60,6 +63,13 @@ on:
         description: CI workflow file to dispatch on base-branch after a merge made with GITHUB_TOKEN (records the coverage baseline).
         type: string
         default: ""
+      auto-fix:
+        description: >-
+          A failed agent PR returns `fix` (the caller runs implement.yml mode=fix on GitHub
+          Actions). Off: the gate comments on the PR asking for `/pipeline:build pr <n>` in
+          Claude Code and returns `fix-manual`.
+        type: boolean
+        default: false
     secrets:
       agent_app_id:
         required: false
@@ -123,6 +133,8 @@ jobs:
           IGNORE_CHECKS: ${{ inputs.ignore-checks }}
           METHOD: ${{ inputs.merge-method }}
           DISPATCH: ${{ inputs.ci-dispatch-workflow }}
+          AUTO_FIX: ${{ inputs.auto-fix }}
+          MARKER_HINT: "<!-- agent-toolkit:fix-hint -->"
         run: |
           set -euo pipefail
           R="$GITHUB_REPOSITORY"
@@ -186,8 +198,20 @@ jobs:
           sfailed=$(jq -r '[.[] | select(.state == "failure" or .state == "error") | .context] | join(", ")' <<<"$statuses")
           [[ -n "$sfailed" ]] && failed="${failed:+$failed, }$sfailed"
           if [[ -n "$failed" ]]; then
-            [[ -n "$REQ_LABEL" ]] && finish fix "failed: $failed"
-            finish blocked "failed: $failed"
+            [[ -n "$REQ_LABEL" ]] || finish blocked "failed: $failed"
+            [[ "$AUTO_FIX" == true ]] && finish fix "failed: $failed"
+            # One hint per head commit: CI and review each re-run the gate.
+            hinted=$(gh api "repos/$R/issues/$pr/comments?per_page=100" --paginate \
+                       --jq "[.[] | select(.body | contains(\"$MARKER_HINT $SHA\"))] | length" | jq -s add)
+            if [[ "${hinted:-0}" -eq 0 ]]; then
+              gh pr comment "$pr" --repo "$R" --body-file - >/dev/null <<EOF
+          $MARKER_HINT $SHA
+          🔧 Checks failed on \`${SHA:0:7}\`: $failed.
+
+          Fix it in Claude Code, on your machine or on the web: \`/pipeline:build pr $pr\` (or ask Claude to fix PR #$pr). The gate merges the PR once everything is green.
+          EOF
+            fi
+            finish fix-manual "failed: $failed"
           fi
 
           title=$(jq -r .title <<<"$json")

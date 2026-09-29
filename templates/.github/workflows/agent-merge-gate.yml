@@ -1,5 +1,7 @@
-# Runs after CI or Agent Review finishes. Merges green agent PRs into develop, or
-# sends failed ones back to the build agent (circuit breaker in implement.yml).
+# Runs after CI or Agent Review finishes. Merges green agent PRs into develop. A failed
+# one gets a comment asking you to fix it in Claude Code (`/pipeline:build pr <n>`); with
+# the repository variable AGENT_AUTO_BUILD=true it goes back to the build agent on GitHub
+# Actions instead (circuit breaker in implement.yml).
 # workflow_run only fires for workflow files on the default branch.
 name: Agent Merge Gate
 
@@ -27,6 +29,7 @@ jobs:
       base-branch: develop
       required-label: agent
       required-statuses: agent/review
+      auto-fix: ${{ vars.AGENT_AUTO_BUILD == 'true' }}
       # ── edit for your stack ───────────────────────────────────────────────
       setup-command: npm ci
       smoke-command: npm run build && npm test -- smoke

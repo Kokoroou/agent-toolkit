@@ -60,6 +60,8 @@ Legend: ✅ in the repo · 👤 you need to do it on GitHub/your machine (cannot
 - ✅ Circuit breaker: counts fix attempts on the PR; ≥ `max-fix-attempts` (3) →
   `needs-human`, stop. 🔀 Counts both CI failures and review change requests, not just CI.
 - ✅ Starts automatically after triage when `risk≠high` and `size≤M`; a person can add `agent:implement`.
+  Since 0.3: opt-in via the repository variable `AGENT_AUTO_BUILD=true`; by default a person
+  builds in Claude Code with the `/pipeline:build` skill (local or web session).
 
 ## Phase 5 — PR & CI
 - ✅ PR created automatically with `Closes #N`, label `agent`; opened as draft if unfinished.

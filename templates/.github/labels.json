@@ -3,7 +3,7 @@
   {"name": "awaiting-clarification", "color": "d4c5f9", "description": "Triage asked questions; reply to continue"},
   {"name": "ready-for-plan",         "color": "0e8a16", "description": "Triaged; ready for the build agent"},
   {"name": "needs-human",            "color": "d93f0b", "description": "Agent pipeline stopped; a human must act"},
-  {"name": "agent:implement",        "color": "5319e7", "description": "Add to start the build agent on this issue"},
+  {"name": "agent:implement",        "color": "5319e7", "description": "Add to build this issue on GitHub Actions"},
   {"name": "agent",                  "color": "5319e7", "description": "PR opened by the agent pipeline (eligible for auto-merge)"},
   {"name": "do-not-merge",           "color": "b60205", "description": "Merge gate will not merge"},
   {"name": "revert",                 "color": "b60205", "description": "Automatic revert after a failed smoke test"},

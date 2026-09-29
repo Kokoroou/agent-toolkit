@@ -22,12 +22,17 @@ Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu 
    │     ├─ needs-human  → dừng
    │     ├─ reject       → comment / đóng nếu trùng
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)
-   │                        risk≠high && size≤M → workflow_dispatch agent-implement.yml
+   │                        comment: "Next: /pipeline:build N"
    ▼
- agent-implement.yml ─ uses ─▶ implement.yml (mode=implement)
-   │     branch agent/issue-N · plugin pipeline@agent-toolkit
-   │     /pipeline:implement-issue N → sub-agent planner → sub-agent implementer → commit
-   │     workflow push + gh pr create "Closes #N" (label agent, draft nếu chưa xong)
+ Thi công — mặc định: bạn, trong Claude Code (trên máy, hoặc trên web)
+   │     /pipeline:build N (skill) → branch agent/issue-N → sub-agent planner → sub-agent
+   │     implementer → kiểm tra → bạn xác nhận → push + PR "Closes #N" (label agent)
+   │     sandbox trên máy (agent-session.sh run) chặn push → `publish` làm sau khi bạn thoát
+   │
+   │  hoặc trên GitHub Actions: gắn nhãn agent:implement, hoặc tự động khi biến repo
+   │  AGENT_AUTO_BUILD=true (risk≠high && size≤M → workflow_dispatch):
+   │     agent-implement.yml ─ uses ─▶ implement.yml (mode=implement)
+   │     /pipeline:implement-issue N với token chỉ đọc; job publish push + mở PR
    ▼
  PR → develop ──┬─▶ ci.yml ─ uses ─▶ quality.yml   lint → format → test → coverage ≥ develop
                 │                                   PR title · Gitleaks · Semgrep
@@ -38,8 +43,9 @@ Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu 
    │   đọc mọi check run + commit status của head SHA qua Checks/Statuses API
    │   ├─ wait    → còn check đang chạy / thiếu agent/review
    │   ├─ blocked → needs-human, risk:high, do-not-merge, conflict, title sai
-   │   ├─ fix     → implement.yml mode=fix (log CI + review findings)
-   │   │             circuit breaker: ≥ max-fix-attempts → needs-human, dừng
+   │   ├─ fix-manual → comment một lần mỗi head: "/pipeline:build pr P" (mặc định)
+   │   ├─ fix     → auto-fix (AGENT_AUTO_BUILD=true): implement.yml mode=fix (log CI + review
+   │   │             findings); circuit breaker: ≥ max-fix-attempts → needs-human, dừng
    │   └─ merged  → squash, xoá branch, đóng issue
    │                 → smoke test trên develop; fail → PR revert (needs-human)
    ▼
@@ -114,7 +120,7 @@ cần cho vòng build. Vì vậy:
 | Nhóm | Nhãn |
 |---|---|
 | Trạng thái issue | `needs-triage` → `awaiting-clarification` → `ready-for-plan`; `needs-human` |
-| Điều khiển | `agent:implement` (người gắn để chạy build), `agent` (PR do agent tạo, đủ điều kiện auto-merge), `do-not-merge`, `revert` |
+| Điều khiển | `agent:implement` (người gắn để build trên GitHub Actions), `agent` (PR do agent tạo, đủ điều kiện auto-merge), `do-not-merge`, `revert` |
 | Phân loại | `type:*`, `priority:P0..P3`, `risk:low/medium/high`, `size:XS..XL` |
 
 `risk:high` không bao giờ được auto-implement hay auto-merge.

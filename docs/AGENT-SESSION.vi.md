@@ -2,9 +2,10 @@
 
 [English](AGENT-SESSION.md) · **Tiếng Việt**
 
-Pipeline GitHub Actions là một cách để build một issue. Trang này mô tả cách còn lại: bạn
-tự chạy plugin `pipeline` trên máy mình hoặc trong một phiên Claude Code cloud, và xem nó
-làm việc trực tiếp. Script `scripts/agent-session.sh` (lệnh cài chép vào dự án) lo hai thứ
+Đây là cách mặc định để thi công một issue: bạn tự chạy skill `/pipeline:build` của plugin
+`pipeline` trên máy mình hoặc trong một phiên Claude Code cloud, với đầy đủ harness của bạn
+(tool, hook, sandbox), và xem nó làm việc trực tiếp. (Build agent trên GitHub Actions là
+lựa chọn tuỳ chọn, xem ADD-TO-PROJECT §3.4.) Script `scripts/agent-session.sh` (lệnh cài chép vào dự án) lo hai thứ
 mà phiên kiểu này cần nhưng không được đưa vào git:
 
 - **Secret** (`.env`): commit ở dạng **đã mã hoá** bằng
@@ -155,11 +156,16 @@ Cần Claude Code v2.1.219 trở lên. Trên Linux/WSL2 cần thêm `bubblewrap`
 (`sudo apt install bubblewrap socat`); macOS không cần cài gì thêm.
 
 ```bash
-git switch -c agent/issue-42 develop
 scripts/agent-session.sh run                         # tương tác
 scripts/agent-session.sh run -- --permission-mode auto
-# trong Claude: /pipeline:implement-issue 42
+# trong Claude: /pipeline:build 42   (hoặc: "thi công issue 42"; PR đỏ: /pipeline:build pr 57)
+#                /pipeline:build      (không tham số: danh sách xếp hạng việc nên làm tiếp)
 ```
+
+Skill tạo branch `agent/issue-42`, lập kế hoạch, viết code và chạy kiểm tra. Sandbox chặn
+`git push` và `gh pr create`, nên skill ghi tiêu đề và nội dung PR vào
+`.agent-local/pr/agent-issue-42.md`. Ở chế độ hàng đợi, nó làm tiếp việc sau trên branch
+riêng; các branch chờ bạn publish khi thoát Claude.
 
 `run` làm những việc sau:
 
@@ -179,7 +185,13 @@ scripts/agent-session.sh run -- --permission-mode auto
      đăng thứ gì đó lên (gist, release, comment, tạo PR…).
 
    Xem file chính xác bằng `scripts/agent-session.sh settings`.
-4. Khi Claude thoát và `.agent-local/out/` có file, hỏi bạn có muốn `save` không.
+4. Khi Claude thoát và `.agent-local/pr/` có file, chạy `publish` cho từng branch: từ chối
+   nếu file tin tưởng bị sửa hoặc branch còn thay đổi chưa commit, hiện các commit, diff
+   stat và mọi thay đổi trong
+   `.github/workflows`, rồi sau khi bạn xác nhận thì push branch (bỏ qua git hook) và mở PR
+   có `Closes #N` với nhãn `agent` — hoặc, khi sửa PR, push và comment tóm tắt. Bạn cũng có
+   thể tự chạy `scripts/agent-session.sh publish` sau.
+5. Khi `.agent-local/out/` có file, hỏi bạn có muốn `save` không.
 
 `save` từ chối upload khi:
 
@@ -221,6 +233,12 @@ là:
 3. Mở phiên trên repo. `.claude/settings.json` của dự án có hook `SessionStart` chạy
    `agent-session.sh decrypt --if-key`, nên `.env` có sẵn trước khi agent bắt đầu. Cùng hook
    đó không làm gì trong CI hoặc trên máy không có key.
+4. Gõ `/pipeline:build 42` (hoặc "thi công issue 42"). Phiên cloud tự push được, nên sau
+   khi bạn xác nhận nó push và mở PR `agent` luôn. Proxy GitHub của cloud chỉ cho push lên
+   branch của phiên, nên PR đi từ branch đó thay vì `agent/issue-42`; review và merge gate
+   vẫn chạy như thường (chúng dựa vào nhãn `agent` và `Closes #42`). Với
+   `/pipeline:build pr 57`, phiên phải push được lên branch của PR; nếu bị từ chối, skill
+   dừng và báo — khi đó sửa PR đó từ máy bạn.
 
 **Mạng trên cloud (đã tra tài liệu chính thức).** Hộp thoại environment có 4 mức
 ([tài liệu](https://code.claude.com/docs/en/cloud-environments#access-levels)):
@@ -271,7 +289,8 @@ Hãy giữ như vậy:
 **Rủi ro còn lại:**
 
 - **GitHub vẫn truy cập được.** Agent có thể đưa dữ liệu vào commit. Review diff trước khi
-  push; lệnh `implement-issue` của plugin không tự push, và `run` chặn `git push`.
+  push; `/pipeline:build` hỏi trước khi push, và trong `run` nó không push được: `publish`
+  cho bạn xem các commit trước.
 - **Code agent viết sẽ chạy sau đó, ngoài sandbox**, khi bạn tự chạy test, git hook (husky…)
   hay script build. Hãy review trước, như với mọi PR.
 - **Agent đọc được `.env`** (test cần nó). Chỉ để credential dev/test trong đó, không bao
@@ -290,7 +309,8 @@ Hãy giữ như vậy:
 | `encrypt [--trust-changes]` | `SECRET_FILES` → `<file>.age` (dạng ASCII; bỏ qua nếu nội dung không đổi) |
 | `decrypt [--force] [--if-key]` | `<file>.age` → `<file>`. Giữ file local khác nội dung trừ khi có `--force`. `--if-key` không làm gì khi thiếu key hoặc thiếu `age` |
 | `pull` | `PULL_REMOTE` → `IN_DIR` |
-| `run [--no-pull] [-- <tham số claude>]` | decrypt + pull + Claude trong sandbox + hỏi save |
+| `run [--no-pull] [-- <tham số claude>]` | decrypt + pull + Claude trong sandbox + hỏi publish và save |
+| `publish [--yes] [--trust-changes]` | Với mỗi file trong `.agent-local/pr/` (do `/pipeline:build` ghi): push branch và mở PR, hoặc khi sửa PR thì push và comment. Hỏi trước từng cái; file lỗi được giữ lại cho lần sau |
 | `save [--yes] [--trust-changes]` | Kiểm tra rồi upload `OUT_DIR` lên `PUSH_REMOTE/<stamp>/`. `--yes` bắt buộc phải có gitleaks |
 | `settings` | In settings sandbox được sinh ra |
 

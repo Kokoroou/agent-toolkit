@@ -2,9 +2,10 @@
 
 **English** · [Tiếng Việt](AGENT-SESSION.vi.md)
 
-The GitHub Actions pipeline is one way to build an issue. This page is the other: you run
-the same `pipeline` plugin yourself, on your machine or in a Claude Code cloud session,
-and watch it work. `scripts/agent-session.sh` (copied into your project by the installer)
+This is the default way to build an issue: you run the `pipeline` plugin's
+`/pipeline:build` skill yourself, on your machine or in a Claude Code cloud session, with
+your full harness (tools, hooks, sandbox), and watch it work. (The GitHub Actions build
+agent is the optional alternative, see ADD-TO-PROJECT §3.4.) `scripts/agent-session.sh` (copied into your project by the installer)
 handles the two things such a session needs that must not end up in git:
 
 - **Secrets** (`.env`): committed **encrypted** with [age](https://github.com/FiloSottile/age)
@@ -153,11 +154,16 @@ Requires Claude Code v2.1.219 or later. On Linux/WSL2 you also need `bubblewrap`
 `socat` (`sudo apt install bubblewrap socat`); on macOS nothing extra is needed.
 
 ```bash
-git switch -c agent/issue-42 develop
 scripts/agent-session.sh run                         # interactive
 scripts/agent-session.sh run -- --permission-mode auto
-# inside Claude: /pipeline:implement-issue 42
+# inside Claude: /pipeline:build 42   (or: "build issue 42"; a red PR: /pipeline:build pr 57)
+#                /pipeline:build      (no argument: ranked list of what to build next)
 ```
+
+The skill creates the `agent/issue-42` branch, plans, implements and runs the checks. The
+sandbox denies `git push` and `gh pr create`, so it writes the PR title and body to
+`.agent-local/pr/agent-issue-42.md` instead. In queue mode it goes on to the next item on
+its own branch; the branches wait for you to publish them when you exit.
 
 `run` does the following:
 
@@ -177,7 +183,14 @@ scripts/agent-session.sh run -- --permission-mode auto
      publish something (gists, releases, comments, PR creation…) are denied.
 
    Run `scripts/agent-session.sh settings` to see the exact file.
-4. When Claude exits and `.agent-local/out/` has files, asks whether to `save` them.
+4. When Claude exits and `.agent-local/pr/` has files, runs `publish`, one branch at a
+   time: it refuses if a trusted file changed or the branch is dirty, shows the commits,
+   the diff stat and any
+   `.github/workflows` change, then after you confirm pushes the branch (git hooks
+   skipped) and opens the PR with `Closes #N` and the `agent` label — or, for a PR fix,
+   pushes and comments the summary. You can also run `scripts/agent-session.sh publish`
+   later.
+5. When `.agent-local/out/` has files, asks whether to `save` them.
 
 `save` refuses to upload when:
 
@@ -221,6 +234,13 @@ agent can read. The design is:
 3. Start a session on the repo. The project's `.claude/settings.json` has a `SessionStart`
    hook that runs `agent-session.sh decrypt --if-key`, so `.env` is there before the agent
    starts. The same hook does nothing in CI or on a machine without a key.
+4. Say `/pipeline:build 42` (or "build issue 42"). The session can push itself, so after
+   you confirm it pushes and opens the `agent` PR directly. The cloud's GitHub proxy only
+   lets it push to the session's own branch, so the PR comes from that branch rather than
+   `agent/issue-42`; review and the merge gate work the same (they go by the `agent`
+   label and `Closes #42`). For `/pipeline:build pr 57` the session must be able to push
+   to the PR's branch; if the push is refused, the skill stops and says so — fix that PR
+   from your machine instead.
 
 **Network access in the cloud.** The environment dialog offers four levels
 ([docs](https://code.claude.com/docs/en/cloud-environments#access-levels)):
@@ -272,8 +292,8 @@ person.
 **Residual risks:**
 
 - **GitHub is reachable.** An agent could put data into a commit or PR text. Review the
-  diff before you push. The plugin's `implement-issue` never pushes by itself, and `run`
-  denies `git push`.
+  diff before you push. `/pipeline:build` asks before it pushes, and under `run` it cannot
+  push at all: `publish` shows you the commits first.
 - **Code the agent writes runs later, outside the sandbox**, when you run tests, git hooks
   from tools like husky, or build scripts yourself. Review it first, as you would any PR.
 - **The agent can read `.env`** (tests need it). Put only development/test credentials
@@ -293,7 +313,8 @@ person.
 | `encrypt [--trust-changes]` | `SECRET_FILES` → `<file>.age` (ASCII-armored; skipped when unchanged) |
 | `decrypt [--force] [--if-key]` | `<file>.age` → `<file>`. Keeps a local file that differs unless `--force`. `--if-key` does nothing when no key or no `age` is available |
 | `pull` | `PULL_REMOTE` → `IN_DIR` |
-| `run [--no-pull] [-- <claude args>]` | decrypt + pull + sandboxed Claude + offer to save |
+| `run [--no-pull] [-- <claude args>]` | decrypt + pull + sandboxed Claude + offer to publish and save |
+| `publish [--yes] [--trust-changes]` | For each file in `.agent-local/pr/` (written by `/pipeline:build`): pushes its branch and opens the PR, or for a PR fix pushes and comments. Asks before each; a file that fails stays for the next run |
 | `save [--yes] [--trust-changes]` | Checks, then uploads `OUT_DIR` to `PUSH_REMOTE/<stamp>/`. `--yes` requires gitleaks |
 | `settings` | Prints the generated sandbox settings |
 

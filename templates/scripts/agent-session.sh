@@ -10,18 +10,23 @@
 #                                              <file>.age → <file>, key from $AGE_SECRET_KEY or the key file
 #   scripts/agent-session.sh pull              PULL_REMOTE → .agent-local/in/ (rclone)
 #   scripts/agent-session.sh run [--no-pull] [-- <claude args>]
-#                                              decrypt + pull, run Claude in a strict sandbox, then offer `save`
+#                                              decrypt + pull, run Claude in a strict sandbox, then offer
+#                                              `publish` and `save`
+#   scripts/agent-session.sh publish [--yes] [--trust-changes]
+#                                              push each branch /pipeline:build left in .agent-local/pr/
+#                                              and open (or comment on) its PR
 #   scripts/agent-session.sh save [--yes] [--trust-changes]
 #                                              .agent-local/out/ → PUSH_REMOTE/<stamp>/ after checks
 #   scripts/agent-session.sh settings          print the sandbox settings `run` passes to Claude
 #
 # Storage (rclone) and age credentials are only used by this script, outside Claude: `run`
 # strips them from Claude's environment, denies reading them, and its sandbox cannot reach
-# any host outside the allowlist, storage hosts included. Only a person runs `save`.
+# any host outside the allowlist, storage hosts included. Only a person runs `publish` and
+# `save`.
 # Guide: https://github.com/kokoroou/agent-toolkit/blob/main/docs/AGENT-SESSION.md
 set -euo pipefail
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 die() { echo "agent-session: $*" >&2; exit 1; }
 note() { echo "agent-session: $*" >&2; }
 
@@ -328,6 +333,116 @@ $odd"
   echo "Saved to $dest"
 }
 
+# ── publish: the push and PR the sandbox does not allow, done by a person ─────────
+# /pipeline:build writes one file per branch to pr_dir when `git push` is blocked: KEY: value
+# header lines (branch, issue or pr, base, title, labels), a `---` line, then the PR body
+# (issue mode) or a fix summary for a PR comment (PR mode). pr_legacy: older single file.
+pr_dir=.agent-local/pr
+pr_legacy=.agent-local/pr.md
+trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+pr_files() { # waiting publish files, oldest first
+  local f
+  # shellcheck disable=SC2012 # names are written by the skill; ls -tr for age order
+  { [[ -d "$pr_dir" ]] && ls -tr "$pr_dir"/*.md 2>/dev/null; [[ -f "$pr_legacy" ]] && echo "$pr_legacy"; } \
+    | while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f"; done
+  return 0
+}
+
+cmd_publish() {
+  assume_yes=false trust_changes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --yes|-y) assume_yes=true ;; --trust-changes) trust_changes=true ;; *) usage 1 ;; esac; shift
+  done
+  need gh "https://cli.github.com"
+  check_trusted
+  local files f n=0 failed=()
+  files=$(pr_files)
+  [[ -n "$files" ]] || die "nothing to publish in $pr_dir/ (/pipeline:build writes there when the sandbox blocks the push)"
+  while IFS= read -r f; do
+    echo; echo "── $f"
+    # A subshell per file: one bad file (die) does not stop the others.
+    if ( publish_one "$f" ) </dev/null; then n=$((n + 1)); else failed+=("$f"); fi
+  done <<<"$files"
+  echo; note "published $n; left ${#failed[@]}${failed[*]:+: ${failed[*]}}"
+  [[ ${#failed[@]} -eq 0 ]]
+}
+
+publish_one() { # <file>
+  local file="$1" issue="" pr="" base="" title="" extra="" branch="" line k v in_body=false body l labels=(agent)
+  mkdir -p "$state_dir"; body="$state_dir/pr-body.md"; : >"$body"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    if [[ "$in_body" == true ]]; then printf '%s\n' "$line" >>"$body"; continue; fi
+    [[ "$line" == --- ]] && { in_body=true; continue; }
+    [[ "$line" == *:* ]] || continue
+    k=$(trim "${line%%:*}") v=$(trim "${line#*:}")
+    case "$k" in
+      branch) branch="${v%%[[:space:]]*}" ;;
+      issue) issue="${v%%[[:space:]]*}" ;;
+      pr) pr="${v%%[[:space:]]*}" ;;
+      base) base="${v%%[[:space:]]*}" ;;
+      title) title="$v" ;;
+      labels) extra="${v%%#*}" ;;
+    esac
+  done <"$file"
+  [[ -z "$issue" || "$issue" =~ ^[0-9]+$ ]] || die "$file: issue must be a number"
+  [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || die "$file: pr must be a number"
+  [[ -n "$issue$pr" ]] || die "$file: needs an 'issue:' or a 'pr:' line"
+  if [[ -z "$base" ]]; then
+    if git rev-parse -q --verify refs/remotes/origin/develop >/dev/null; then base=develop
+    else base=$(git symbolic-ref --short -q refs/remotes/origin/HEAD || echo origin/main); base="${base#origin/}"; fi
+  fi
+  git check-ref-format --branch "$base" >/dev/null 2>&1 || die "$file: bad base branch '$base'"
+  for l in $extra; do # only labels that hold a PR back; never ones that would widen what merges
+    case "$l" in needs-human|risk:high) labels+=("$l") ;; *) note "ignored label '$l'" ;; esac
+  done
+
+  [[ -n "$branch" ]] || branch=$(git symbolic-ref --short -q HEAD) || die "$file: needs a 'branch:' line"
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || die "$file: bad branch '$branch'"
+  case "$branch" in "$base"|main|master|develop) die "refusing to publish '$branch'" ;; esac
+  git rev-parse -q --verify "refs/heads/$branch" >/dev/null || die "no local branch '$branch'"
+  if [[ "$branch" == "$(git symbolic-ref --short -q HEAD || true)" && -n "$(git status --porcelain)" ]]; then
+    die "uncommitted changes on $branch: commit or discard them first"
+  fi
+  git fetch -q origin "$base" || die "cannot fetch origin/$base"
+  local ref="refs/heads/$branch" commits workflows
+  commits=$(git log --oneline "origin/$base..$ref")
+  [[ -n "$commits" ]] || die "$branch has no commits on top of origin/$base"
+  workflows=$(git diff --name-only "origin/$base...$ref" -- .github/workflows)
+
+  echo "Branch:  $branch → $base"
+  echo "Commits:"; printf '%s\n' "$commits" | sed 's/^/  /'
+  git --no-pager diff --stat "origin/$base...$ref" | tail -n 25
+  if [[ -n "$issue" ]]; then
+    [[ -n "$title" ]] || die "$file: needs a 'title:' line"
+    grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #$issue\\b" "$body" || printf '\nCloses #%s\n' "$issue" >>"$body"
+    echo "PR:      $title  [${labels[*]}]  (Closes #$issue)"
+  else
+    echo "PR:      #$pr (push; the text below '---' becomes a comment)"
+  fi
+  if [[ -n "$workflows" ]]; then
+    echo "WARNING: changes CI workflows — review them before pushing:"; printf '%s\n' "$workflows" | sed 's/^/  /'
+  fi
+  confirm "Push $branch${issue:+ and open the PR}?" || { note "not published"; return 1; }
+
+  # --no-verify: hooks come from the checkout the agent wrote to; they must not run here.
+  git push --no-verify origin "$ref:$ref"
+  if [[ -n "$pr" ]]; then
+    if [[ -s "$body" ]]; then gh pr comment "$pr" --body-file "$body" >/dev/null; fi
+    echo "Pushed to PR #$pr"
+  elif l=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty') && [[ -n "$l" ]]; then
+    echo "Pushed; PR already open: $l"
+  else
+    local args=()
+    for l in "${labels[@]}"; do
+      gh label create "$l" --color "$( [[ "$l" == agent ]] && echo 0e8a16 || echo d93f0b )" >/dev/null 2>&1 || true
+      args+=(--label "$l")
+    done
+    gh pr create --base "$base" --head "$branch" --title "$title" --body-file "$body" "${args[@]}"
+  fi
+  rm -f "$file" "$body"
+}
+
 # ── sandboxed Claude ─────────────────────────────────────────────────────────────
 secret_env_names() { compgen -e | grep -E '^(AGE_|RCLONE_|AGENT_SESSION_|B2_APPLICATION_KEY)' || true; }
 
@@ -409,6 +524,10 @@ cmd_run() {
   echo "Starting Claude in the sandbox (settings: $state_dir/settings.json)."
   echo "Write untracked outputs to $OUT_DIR/; 'save' uploads them after the session."
   env ${unset_args[@]+"${unset_args[@]}"} claude --settings "$state_dir/settings.json" "$@" || rc=$?
+  if [[ -n "$(pr_files)" ]]; then
+    echo; echo "/pipeline:build left branches to publish:"; pr_files | sed 's/^/  /'
+    ( cmd_publish ) || true
+  fi
   if [[ -n "$PUSH_REMOTE" && -d "$OUT_DIR" && -n "$(find "$OUT_DIR" -type f -print -quit)" ]]; then
     echo; confirm "Save $OUT_DIR to $PUSH_REMOTE now?" && cmd_save
   fi
@@ -424,6 +543,7 @@ case "$sub" in
   decrypt) cmd_decrypt "$@" ;;
   pull) cmd_pull ;;
   save) cmd_save "$@" ;;
+  publish) cmd_publish "$@" ;;
   run) cmd_run "$@" ;;
   settings) settings_json ;;
   -h|--help|help) usage 0 ;;

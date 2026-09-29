@@ -57,6 +57,8 @@ Ký hiệu: ✅ đã có trong repo · 👤 bạn cần làm trên GitHub/máy (
 - ✅ Circuit breaker: đếm lần fix trên PR; ≥ `max-fix-attempts` (3) → `needs-human`, dừng.
   🔀 Đếm cả lỗi CI lẫn review yêu cầu sửa, không chỉ CI.
 - ✅ Tự khởi động sau triage khi `risk≠high` và `size≤M`; người có thể gắn `agent:implement`.
+  Từ 0.3: chỉ bật khi đặt biến repo `AGENT_AUTO_BUILD=true`; mặc định người thi công trong
+  Claude Code bằng skill `/pipeline:build` (phiên trên máy hoặc trên web).
 
 ## Giai đoạn 5 — PR & CI
 - ✅ PR tự tạo với `Closes #N`, nhãn `agent`; chưa xong thì mở dạng draft.

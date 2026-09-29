@@ -1,7 +1,11 @@
+# Optional: builds an issue on GitHub Actions. The default is to build in Claude Code on
+# your machine or on the web (`/pipeline:build <issue>`, docs/AGENT-SESSION.md). This runs
+# when you add the `agent:implement` label, or after triage when the repository variable
+# AGENT_AUTO_BUILD is `true`.
 name: Agent Implement
 
 on:
-  workflow_dispatch: # dispatched by triage when an issue becomes ready
+  workflow_dispatch: # dispatched by triage when an issue becomes ready (AGENT_AUTO_BUILD=true)
     inputs:
       issue:
         description: Issue number

@@ -205,9 +205,9 @@ gọi nó rồi làm tiếp secret, settings và commit.
    |---|---|
    | `.github/workflows/ci.yml` | CI (tên `CI`): lint, format, test, coverage, tiêu đề PR, Semgrep, Gitleaks |
    | `.github/workflows/agent-triage.yml` | Triage issue khi mở/sửa/comment, quét 6 giờ/lần |
-   | `.github/workflows/agent-implement.yml` | Build agent; chạy khi triage dispatch hoặc khi gắn nhãn `agent:implement` |
+   | `.github/workflows/agent-implement.yml` | Build agent tuỳ chọn trên GitHub Actions; chạy khi gắn nhãn `agent:implement`, hoặc sau triage khi biến repo `AGENT_AUTO_BUILD` là `true`. Mặc định bạn thi công trong Claude Code bằng `/pipeline:build N` |
    | `.github/workflows/agent-review.yml` | Review PR mang nhãn `agent` (tên `Agent Review`) |
-   | `.github/workflows/agent-merge-gate.yml` | Chạy sau `CI`/`Agent Review`: merge, gửi đi sửa, hoặc chặn |
+   | `.github/workflows/agent-merge-gate.yml` | Chạy sau `CI`/`Agent Review`: merge, yêu cầu sửa (`/pipeline:build pr P`, hoặc build agent trên Actions khi `AGENT_AUTO_BUILD=true`), hoặc chặn |
    | `.github/workflows/release.yml` | release-please khi push `main` |
    | `.github/workflows/agent-usage-report.yml` | Báo cáo phút Actions + chi phí Claude hằng tuần |
    | `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` | Template issue có cấu trúc, tắt issue trống |
@@ -257,6 +257,10 @@ Cần thêm bước cài runtime (setup-node/python/go) thì đưa vào `setup-c
 `ubuntu-latest` đã có sẵn Node, Python, Go, Java ở phiên bản phổ biến.
 
 ### 3.2 `agent-implement.yml` và job `fix` trong `agent-merge-gate.yml`
+
+Hai chỗ này chỉ chạy khi build trên GitHub Actions (nhãn `agent:implement`, hoặc
+`AGENT_AUTO_BUILD=true`, xem §3.4). Build do bạn khởi động bằng `/pipeline:build` dùng
+phiên Claude Code của bạn và các lệnh trong `CLAUDE.md`.
 
 | Input | Ý nghĩa |
 |---|---|
@@ -329,9 +333,14 @@ bash -c '<coverage-command của bạn>' 2>/dev/null | tail -1   # vd: 84.61
 
 ### 3.4 Các tuỳ chỉnh khác thường dùng
 
+- **Build chạy ở đâu.** Mặc định không có gì tự build: triage comment `/pipeline:build N`
+  lên issue đã sẵn sàng, merge gate comment `/pipeline:build pr P` lên PR agent bị đỏ, và
+  bạn chạy các lệnh đó trong Claude Code (trên máy hoặc trên web). Muốn tự build trên
+  GitHub Actions thì đặt biến repo `AGENT_AUTO_BUILD=true` (*Settings → Secrets and
+  variables → Actions → Variables*, hoặc `gh variable set AGENT_AUTO_BUILD --body true`):
+  triage sẽ dispatch `agent-implement.yml` và merge gate chạy job `fix`. Không cần sửa file.
 - `agent-triage.yml`: `max-rounds` (số vòng hỏi lại, 1–5, mặc định 5), `auto-implement-max-size`
-  (`XS|S|M|L`; lớn hơn thì chờ người gắn `agent:implement`), bỏ `dispatch-on-ready`
-  nếu muốn luôn tự quyết định issue nào được build.
+  (`XS|S|M|L`, khi `AGENT_AUTO_BUILD=true`; lớn hơn thì chờ bạn).
 - `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` theo ngân sách của bạn.
 - Branch tích hợp khác `develop`: đổi `base-branch`, `baseline-branch` và `branches:`
   trong mọi caller cho khớp.
@@ -586,9 +595,12 @@ cần dò nữa.
 | Muốn | Làm |
 |---|---|
 | Giao việc cho agent | Mở issue bằng template; triage tự quyết |
-| Build một issue size L hoặc đã bị `needs-human` | Sửa issue cho rõ, bỏ nhãn `needs-human`, gắn **`agent:implement`** |
+| Thi công một issue đã sẵn sàng | Trong Claude Code trên dự án (máy bạn hoặc web): `/pipeline:build N`, hoặc "thi công issue N". Xác nhận push khi được hỏi |
+| Làm dần backlog | `/pipeline:build` không tham số: xếp hạng issue sẵn sàng và PR agent bị đỏ, đề xuất thứ tự, thi công lần lượt những việc bạn duyệt |
+| Sửa PR agent bị đỏ | `/pipeline:build pr P` (merge gate comment sẵn lệnh này trên PR) |
+| Build một issue size L hoặc đã bị `needs-human` | Sửa issue cho rõ, bỏ nhãn `needs-human`, rồi `/pipeline:build N` (hoặc gắn **`agent:implement`** để build trên Actions) |
 | Triage lại issue | Gắn nhãn `needs-triage` hoặc *Actions → Agent Triage → Run workflow* |
-| Đổi yêu cầu | Sửa nội dung issue (nguồn sự thật là issue, không phải comment). Issue đang `needs-triage` / `awaiting-clarification` / `ready-for-plan` được triage lại tự động, vòng hỏi đếm lại từ 0 nếu triage trước đã kết luận. PR agent đang mở cho issue bị gắn `needs-human` → đóng PR, xoá branch, gắn `agent:implement` khi issue `ready-for-plan` trở lại |
+| Đổi yêu cầu | Sửa nội dung issue (nguồn sự thật là issue, không phải comment). Issue đang `needs-triage` / `awaiting-clarification` / `ready-for-plan` được triage lại tự động, vòng hỏi đếm lại từ 0 nếu triage trước đã kết luận. PR agent đang mở cho issue bị gắn `needs-human` → đóng PR, xoá branch, build lại (`/pipeline:build N` hoặc `agent:implement`) khi issue `ready-for-plan` trở lại |
 | Huỷ, không làm tiếp | Đóng issue. Triage và build bỏ qua; build đang chạy không push, không mở PR; PR đã mở không được fix, merge gate gắn `needs-human` thay vì merge. Đóng luôn PR nếu có |
 | Chặn một PR agent | Gắn `do-not-merge` (hoặc `risk:high`) |
 | Cho agent review PR của người | Gắn nhãn `agent` vào PR (PR sẽ đủ điều kiện auto-merge!) |
@@ -606,9 +618,9 @@ cần dò nữa.
 | Lỗi xác thực Claude / `401` | Thiếu hoặc sai `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, OAuth token hết hạn | Tạo lại (`claude setup-token`), đặt lại secret |
 | PR agent không có check CI (không dùng App) | Bình thường: CI được dispatch riêng, xem trong Actions tab | Dùng App để check hiện trên PR |
 | CI báo `coverage-command must print the percentage on its last line` | Dòng cuối stdout của `coverage-command` không chứa số | Chuyển output khác sang `>&2` (§3.3) |
-| Agent thử lệnh bị từ chối (`permission denied` / tool not allowed trong transcript) | Lệnh thiếu trong `extra-allowed-tools` | Thêm vào cả `agent-implement.yml` và job `fix` |
+| Agent thử lệnh bị từ chối (`permission denied` / tool not allowed trong transcript) | Lệnh thiếu trong `extra-allowed-tools` | Thêm vào cả `agent-implement.yml` và job `fix` (chỉ build trên Actions) |
 | Issue đã merge vẫn mở | Merge gate không chạy tới bước đóng; PR không có `Closes #N` | Kiểm tra log merge gate; đóng tay |
-| PR bị `needs-human` sau 3 lần fix | Circuit breaker | Đọc transcript `transcript-fix-*`, sửa tay hoặc làm rõ issue rồi gắn lại `agent:implement` |
+| PR bị `needs-human` sau 3 lần fix | Circuit breaker | Đọc transcript `transcript-fix-*`, sửa tay, chạy `/pipeline:build pr P`, hoặc làm rõ issue rồi build lại |
 | Triage không phản hồi khi trả lời câu hỏi | Comment từ bot bị bỏ qua; issue không còn `awaiting-clarification` | Comment bằng tài khoản người; gắn lại `needs-triage` |
 
 Vẫn không rõ: mở run bị lỗi → xem Step Summary và tải artifact `transcript-*`.

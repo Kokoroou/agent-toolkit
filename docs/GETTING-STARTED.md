@@ -39,18 +39,23 @@ Contents:
 ## 1. What the pipeline does
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
 ```
 
 - You open an issue from the template (Goal / Constraints / Acceptance criteria).
 - **Triage** reads the issue, asks back for up to 5 rounds if information is missing or the
   intent is unclear, then labels it `type:*`, `priority:*`, `risk:*`, `size:*`.
-- A clear issue with `risk` other than `high` and `size` ≤ M → the **build agent** creates
-  branch `agent/issue-N`, plans, writes code + tests and opens a PR into `develop`.
+- A clear issue gets `ready-for-plan` and a comment with the next step. You start the
+  **build agent** when you want: `/pipeline:build N` in Claude Code on your machine or on
+  the web. It creates branch `agent/issue-N`, plans, writes code + tests and, after you
+  confirm, opens a PR into `develop`. (Optional: set the repository variable
+  `AGENT_AUTO_BUILD=true` to build issues with `risk` other than `high` and `size` ≤ M on
+  GitHub Actions automatically, or add the `agent:implement` label to one issue.)
 - **CI** (lint, format, test, no coverage drop, Semgrep, Gitleaks) and the **reviewer
   agent** run on the PR.
-- The **merge gate** squash-merges green PRs into `develop`; red PRs go back to the build
-  agent for a fix (up to 3 times), after which it stops with the `needs-human` label.
+- The **merge gate** squash-merges green PRs into `develop`; on a red PR it comments with
+  `/pipeline:build pr P` for you to run (with `AGENT_AUTO_BUILD=true` it sends the PR back
+  to the build agent on Actions instead, up to 3 times, then stops with `needs-human`).
 - You merge `develop` → `main` yourself; release-please creates the version, CHANGELOG and
   GitHub Release.
 
@@ -203,10 +208,13 @@ can read issues/PRs):
 
 | Command | What it does |
 |---|---|
+| `/pipeline:build 42` | **Build issue #42 end to end**: branch, plan, implement, checks, then (after you confirm) push + PR with `Closes #42` and label `agent`. Or just ask "build issue 42" |
+| `/pipeline:build` | No argument: collects ready issues and red agent PRs, drops blocked ones, ranks them (red PRs first, then priority P0→P3, bugs, smaller size, older), proposes an order and builds the ones you approve one after another. Or ask "what should we build next?" |
+| `/pipeline:build pr 57` | Fix agent PR #57 from its failing CI log / review findings, then push |
 | `/pipeline:triage-issue 42` | Score and classify issue #42, suggest clarifying questions |
 | `/pipeline:plan-feature 42` | Plan issue #42 file by file, no code changes |
-| `/pipeline:implement-issue 42` | Planner → implementer on the current branch, commit (no push) |
-| `/pipeline:fix-pr 57 <log-file>` | Fix PR #57 from a CI log / review, commit (no push) |
+| `/pipeline:implement-issue 42` | Planner → implementer on the current branch, commit (no push; used by the Actions workflow) |
+| `/pipeline:fix-pr 57 <log-file>` | Fix PR #57 from a CI log / review, commit (no push; used by the Actions workflow) |
 | `/pipeline:review-pr 57` | Review PR #57 and return a verdict |
 
 Update the plugin: `claude plugin marketplace update agent-toolkit`.
@@ -259,9 +267,9 @@ already Node + Jest, so the commands need almost no changes).
 | Not enough answers | Reply off-topic 5 times | Label `needs-human`, the pipeline stops |
 | Changed requirements | Edit the body of an issue that is already `ready-for-plan` | Triage runs again, round count restarts at 0; the old agent PR (if any) gets `needs-human` |
 | Cancel | Close the issue | A running build does not push/open a PR; an open PR is neither fixed nor merged |
-| Clear issue, size S | "slugify strips Vietnamese diacritics", with 2–3 concrete acceptance criteria | `ready-for-plan` → PR `agent/issue-N` with `Closes #N` |
+| Clear issue, size S | "slugify strips Vietnamese diacritics", with 2–3 concrete acceptance criteria, then `/pipeline:build N` in Claude Code | `ready-for-plan` → PR `agent/issue-N` with `Closes #N` |
 | Green PR + approving review | Wait for CI and *Agent Review* to finish | The merge gate squashes into `develop`, deletes the branch, closes the issue |
-| Red PR | Push a commit that breaks a test onto the agent branch | Merge gate → `fix` → the agent commits a fix; after 3 times → `needs-human` |
+| Red PR | Push a commit that breaks a test onto the agent branch | Merge gate comments `/pipeline:build pr P`; run it → the fix is pushed. With `AGENT_AUTO_BUILD=true`: `fix` → the agent commits a fix; after 3 times → `needs-human` |
 | High-risk PR | Add the `risk:high` label to an agent PR | The merge gate returns `blocked`, no merge |
 | Smoke fails after merge | Set `smoke-command: "false"` in `agent-merge-gate.yml` | After the merge a `revert/pr-N` PR appears with `needs-human` |
 | Release | Open a `develop` → `main` PR and merge it | release-please opens a release PR; merging it → tag + GitHub Release |
