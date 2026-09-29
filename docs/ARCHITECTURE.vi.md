@@ -19,7 +19,7 @@ Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu 
    │     Claude (read-only) trả JSON {decision, score, type, priority, risk, size, questions…}
    │     workflow áp nhãn / comment / GitHub Projects theo JSON đó
    │     ├─ clarify      → awaiting-clarification, hỏi ≤3 câu làm rõ ý định (tối đa max-rounds ≤ 5 vòng)
-   │     ├─ needs-human  → dừng
+   │     ├─ needs-human  → dừng (cả khi: > 15 tiêu chí nghiệm thu, hoặc Claude không trả về quyết định)
    │     ├─ reject       → comment / đóng nếu trùng
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)
    │                        comment: "Next: /pipeline:build N"
