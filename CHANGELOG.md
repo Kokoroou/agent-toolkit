@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.3.1...v0.4.0) (2026-09-29)
+
+
+### Features
+
+* **bootstrap:** detect the project's lint, format and test tools ([1e9d55e](https://github.com/Kokoroou/agent-toolkit/commit/1e9d55e2085c010579f28b0032cbeb23a13743d3))
+
 ## [0.3.1](https://github.com/Kokoroou/agent-toolkit/compare/v0.3.0...v0.3.1) (2026-09-29)
 
 
