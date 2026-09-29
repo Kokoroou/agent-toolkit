@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/Kokoroou/agent-toolkit/compare/v0.4.0...v0.4.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **bootstrap:** only run a smoke test the project has ([116aacb](https://github.com/Kokoroou/agent-toolkit/commit/116aacb31de54b8a25033d2ed52f4b39fadc90f3), [71750ce](https://github.com/Kokoroou/agent-toolkit/commit/71750cebad3aeafba44d3d2f84a55a42fb933fec))
+* **triage:** hand failed or oversized triage to a person instead of failing ([3419ed9](https://github.com/Kokoroou/agent-toolkit/commit/3419ed90d18dbe4ab8f991563b96840d715f6a92))
+
 ## [0.4.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.3.1...v0.4.0) (2026-09-29)
 
 
