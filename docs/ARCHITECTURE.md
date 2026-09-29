@@ -20,7 +20,7 @@ Sections: [detailed flow](#overall-flow) · [changing requirements and cancellin
    │     Claude (read-only) returns JSON {decision, score, type, priority, risk, size, questions…}
    │     the workflow applies labels / comments / GitHub Projects from that JSON
    │     ├─ clarify      → awaiting-clarification, ask ≤3 intent questions (up to max-rounds ≤ 5 rounds)
-   │     ├─ needs-human  → stop
+   │     ├─ needs-human  → stop (also: > 15 acceptance criteria, or Claude returned no decision)
    │     ├─ reject       → comment / close if duplicate
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)
    │                        comment: "Next: /pipeline:build N"

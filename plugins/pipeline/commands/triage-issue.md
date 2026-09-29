@@ -34,17 +34,25 @@ and posts comments from your structured output. Do not comment, label or edit an
    stated, +1 scope fits one PR (size ≤ L). ≥ 4 is ready.
 6. Decide:
    - `ready` — score ≥ 4, no open question that changes what gets built, not a
-     duplicate, fits one PR. Rewrite the acceptance criteria as a clean checklist in
-     `acceptance_criteria`.
+     duplicate, fits one PR, at most 15 acceptance criteria. Rewrite the acceptance
+     criteria as a clean checklist in `acceptance_criteria`: one testable statement per
+     item, in the issue's own words; constraints stay out of the list.
    - `clarify` — something essential is missing (a template part, or an open point of
      intent that changes what gets built) **and** rounds used < max rounds. Ask at most 3
      specific questions with short answers, most important first. Later rounds build on
      the previous answers and dig into what they left open. Never re-ask what was already
      answered (in comments or in the edited issue body).
    - `needs-human` — rounds exhausted, needs a product/design decision, too large
-     (XL → suggest a split in `summary`), or risk:high with unclear criteria.
+     (XL → suggest a split in `summary`), risk:high with unclear criteria, or more than
+     15 acceptance criteria. For too many criteria, put your proposed shorter list (the
+     most important ones, at most 15, merged where they overlap, nothing dropped
+     silently) in `acceptance_criteria` and say in `summary` what it leaves out; the
+     person then keeps the issue as written or adopts your list.
    - `reject` — duplicate (name it in `duplicate_of`), spam, or not actionable.
 7. Classify `type`, `priority` (P0 outage/security … P3 nice-to-have), `risk`
    (conventions §6) and `size` (XS < 1h, S < ½ day, M ≈ 1 day, L ≈ 2–3 days, XL bigger).
 
-Return the structured output only; keep `summary` to 2–4 sentences for a maintainer.
+Return the structured output only, with exactly these fields: `decision`, `score`,
+`type`, `priority`, `risk`, `size`, `summary`, `questions`, `acceptance_criteria`,
+`duplicate_of` (issue number or `null`). Use `[]` for an empty list. Keep `summary` to 2–4
+sentences for a maintainer and ask at most 3 questions.

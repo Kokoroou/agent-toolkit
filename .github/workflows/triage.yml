@@ -158,47 +158,48 @@ jobs:
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search issues:*),Bash(gh label list:*)"
             --disallowedTools "WebFetch,WebSearch"
-            --json-schema '{"type":"object","additionalProperties":false,"required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string","maxLength":1500},"questions":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":400}},"acceptance_criteria":{"type":"array","maxItems":15,"items":{"type":"string","maxLength":400}},"duplicate_of":{"type":["integer","null"]}}}'
+            --json-schema '{"type":"object","required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string"},"questions":{"type":"array","items":{"type":"string"}},"acceptance_criteria":{"type":"array","items":{"type":"string"}},"duplicate_of":{"type":["integer","null"]}}}'
 
       - name: Apply decision
         id: apply
-        if: steps.pre.outputs.skip != 'true'
+        # Also runs when the Claude step failed, so a failed triage is handed to a person
+        # instead of staying in needs-triage (and being re-run by every scheduled sweep).
+        if: steps.pre.outputs.skip != 'true' && !cancelled()
         env:
           OUT: ${{ steps.claude.outputs.structured_output }}
           ROUNDS: ${{ steps.pre.outputs.rounds }}
           MAX_ROUNDS: ${{ steps.pre.outputs.max_rounds }}
           AUTO_BUILD: ${{ inputs.dispatch-on-ready != '' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # More acceptance criteria than this → a person confirms the scope (keep in sync
+          # with plugins/pipeline/commands/triage-issue.md).
+          MAX_CRITERIA: 15
         run: |
           set -euo pipefail
+          failed=false
           if [[ -z "$OUT" ]] || ! jq -e .decision <<<"$OUT" >/dev/null; then
-            echo "::error::Claude returned no structured decision"; exit 1
+            echo "::error::Claude returned no structured decision; handing issue #$ISSUE to a person"
+            failed=true
+            OUT='{"decision":"needs-human","summary":"","questions":[],"acceptance_criteria":[]}'
           fi
           get() { jq -r "$1" <<<"$OUT"; }
           decision=$(get .decision); risk=$(get .risk); size=$(get .size)
           prio=$(get .priority); type=$(get .type); score=$(get .score)
+          if [[ "$failed" == true ]]; then risk=; size=; prio=; type=; score=; fi
           # Guardrail: the agent cannot ask more than max-rounds times.
           if [[ "$decision" == clarify && "$ROUNDS" -ge "$MAX_ROUNDS" ]]; then decision=needs-human; fi
-
-          existing=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 500 --json name --jq '.[].name')
-          ensure() { grep -qxF "$1" <<<"$existing" || gh label create "$1" --repo "$GITHUB_REPOSITORY" --color "$2" >/dev/null || true; }
-          current=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
-          remove=()
-          while read -r l; do
-            case "$l" in type:*|priority:*|risk:*|size:*|needs-triage|awaiting-clarification|ready-for-plan) remove+=(--remove-label "$l");; esac
-          done <<<"$current"
-          add=("type:$type" "priority:$prio" "risk:$risk" "size:$size")
-          case "$decision" in
-            ready)       add+=(ready-for-plan) ;;
-            clarify)     add+=(awaiting-clarification) ;;
-            needs-human) add+=(needs-human) ;;
-          esac
-          for l in "${add[@]}"; do ensure "$l" ededed; done
-          args=(); for l in "${add[@]}"; do args+=(--add-label "$l"); done
-          if [[ ${#remove[@]} -gt 0 ]]; then gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${remove[@]}" >/dev/null || true; fi
-          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${args[@]}" >/dev/null
+          # Guardrail: a long list of criteria is never cut; a person confirms the scope.
+          n_ac=$(jq '.acceptance_criteria | length' <<<"$OUT")
+          too_many=false
+          if [[ "$decision" == ready && "$n_ac" -gt "$MAX_CRITERIA" ]]; then decision=needs-human; too_many=true; fi
 
           body=$(mktemp)
           summary=$(get .summary)
+          next_human() {
+            echo "**Next:** decide, then remove \`needs-human\` and either"
+            echo "- add \`ready-for-plan\` to build the issue as written, with all of its acceptance criteria, or"
+            echo "- edit the issue (for example to a shorter list of acceptance criteria, or split it) and add \`needs-triage\` to triage it again."
+          }
           case "$decision" in
             clarify)
               {
@@ -228,22 +229,85 @@ jobs:
                 echo "_To change the requirements, edit the issue (triage re-runs); to cancel, close it._"
               } >"$body" ;;
             needs-human)
-              { echo "$MARKER_S"; echo "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)."; echo; echo "$summary"; } >"$body" ;;
+              {
+                echo "$MARKER_S"
+                if [[ "$failed" == true ]]; then
+                  echo "**Triage:** automatic triage did not finish (error, timeout, max-turns, or output that did not match the schema), so this issue needs a person. [Run log and transcript]($RUN_URL)"
+                  echo
+                  echo "_To retry, remove \`needs-human\` and add \`needs-triage\`._"
+                else
+                  echo "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)."
+                  echo
+                  echo "$summary"
+                  if [[ "$too_many" == true ]]; then
+                    echo
+                    echo "The issue is otherwise ready, but it has $n_ac acceptance criteria (more than $MAX_CRITERIA), so a person confirms the scope."
+                  fi
+                  if [[ "$n_ac" -gt 0 ]]; then
+                    echo
+                    if [[ "$too_many" == true ]]; then echo "**Acceptance criteria**"; else echo "**Proposed acceptance criteria**"; fi
+                    jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
+                  fi
+                  echo
+                  next_human
+                fi
+              } >"$body" ;;
             reject)
               { echo "$MARKER_S"; echo "**Triage:** not actionable."; echo; echo "$summary"; } >"$body"
               dup=$(get '.duplicate_of // empty')
-              if [[ -n "$dup" ]]; then
-                echo; echo "Duplicate of #$dup." >>"$body"
-                gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason "not planned" --comment "$(cat "$body")" >/dev/null
-                : >"$body"
-              fi ;;
+              if [[ -n "$dup" ]]; then { echo; echo "Duplicate of #$dup."; } >>"$body"; fi ;;
           esac
-          [[ -s "$body" ]] && gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$body" >/dev/null
+          # GitHub rejects comments over 65536 characters. Never cut the text: hand the issue
+          # to a person with a pointer to the full output in the run log instead.
+          if (( $(wc -c <"$body") > 65000 )); then
+            echo "::warning::Triage comment is too long to post; handing issue #$ISSUE to a person"
+            jq . <<<"$OUT"
+            decision=needs-human
+            {
+              echo "$MARKER_S"
+              echo "**Triage:** the triage result is too long to post as a comment, so this issue needs a person. The full result is in the [run log]($RUN_URL)."
+              echo
+              next_human
+            } >"$body"
+          fi
+
+          existing=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 500 --json name --jq '.[].name')
+          ensure() { grep -qxF "$1" <<<"$existing" || gh label create "$1" --repo "$GITHUB_REPOSITORY" --color "$2" >/dev/null || true; }
+          current=$(gh issue view "$ISSUE" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+          remove=()
+          while read -r l; do
+            case "$l" in
+              needs-triage|awaiting-clarification|ready-for-plan) remove+=(--remove-label "$l") ;;
+              # A failed run has no classification: keep the labels of the last triage.
+              type:*|priority:*|risk:*|size:*) [[ "$failed" == true ]] || remove+=(--remove-label "$l") ;;
+            esac
+          done <<<"$current"
+          add=()
+          [[ "$failed" == true ]] || add=("type:$type" "priority:$prio" "risk:$risk" "size:$size")
+          case "$decision" in
+            ready)       add+=(ready-for-plan) ;;
+            clarify)     add+=(awaiting-clarification) ;;
+            needs-human) add+=(needs-human) ;;
+          esac
+          for l in "${add[@]}"; do ensure "$l" ededed; done
+          args=(); for l in "${add[@]}"; do args+=(--add-label "$l"); done
+          if [[ ${#remove[@]} -gt 0 ]]; then gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${remove[@]}" >/dev/null || true; fi
+          if [[ ${#args[@]} -gt 0 ]]; then gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" "${args[@]}" >/dev/null; fi
+
+          if [[ "$decision" == reject && -n "${dup:-}" ]]; then
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason "not planned" --comment "$(cat "$body")" >/dev/null
+          else
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$body" >/dev/null
+          fi
 
           {
             echo "decision=$decision"; echo "risk=$risk"; echo "size=$size"; echo "priority=$prio"
           } >>"$GITHUB_OUTPUT"
-          echo "### Triage #$ISSUE → \`$decision\` (score $score, $prio, risk $risk, size $size)" >>"$GITHUB_STEP_SUMMARY"
+          if [[ "$failed" == true ]]; then
+            echo "### Triage #$ISSUE → \`$decision\` (Claude returned no structured decision)" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Triage #$ISSUE → \`$decision\` (score $score, $prio, risk $risk, size $size)" >>"$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Flag agent PRs built from the old requirements
         if: steps.apply.outputs.decision != '' && steps.pre.outputs.was_ready == 'true'
