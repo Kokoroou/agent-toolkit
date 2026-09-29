@@ -211,6 +211,9 @@ can read issues/PRs):
 
 Update the plugin: `claude plugin marketplace update agent-toolkit`.
 
+To run these commands in a sandbox, with an encrypted `.env` and storage for untracked
+files: [AGENT-SESSION.md](AGENT-SESSION.md).
+
 ## 8. Try it on a sandbox repo
 
 Before using it on a real project, try the whole loop on a small throwaway repo.

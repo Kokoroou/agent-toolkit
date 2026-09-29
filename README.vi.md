@@ -46,6 +46,7 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 | Cài vào một dự án, sửa theo stack, nâng cấp, xử lý sự cố | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.vi.md) | tra cứu theo mục |
 | Hiểu thiết kế, luồng chi tiết, các "bẫy" GitHub | [ARCHITECTURE.md](docs/ARCHITECTURE.vi.md) | 5 phút |
 | Đánh giá rủi ro bảo mật | [SECURITY.md](docs/SECURITY.vi.md) | 5 phút |
+| Tự chạy agent trên máy / Claude cloud: secret mã hoá, storage, sandbox | [AGENT-SESSION.md](docs/AGENT-SESSION.vi.md) | 10 phút |
 | Sửa / phát hành chính toolkit | [MAINTAINING.md](docs/MAINTAINING.vi.md) | người bảo trì |
 | Lịch sử thi công và trạng thái từng hạng mục | [PLAN.md](docs/PLAN.vi.md) | tham khảo |
 
@@ -85,6 +86,10 @@ claude plugin install pipeline@agent-toolkit
 
 Danh sách lệnh: [GETTING-STARTED §7](docs/GETTING-STARTED.vi.md#7-dùng-plugin-khi-làm-việc-tay-tuỳ-chọn).
 
+Muốn thi công trên máy mình hoặc trên Claude cloud (xem trạng thái trực tiếp) với `.env` mã
+hoá trong repo, file không commit để trên B2/Google Drive, và sandbox chặn agent khỏi
+storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSION.vi.md).
+
 ## Trong repo có gì
 
 <details>
@@ -105,6 +110,7 @@ Danh sách lệnh: [GETTING-STARTED §7](docs/GETTING-STARTED.vi.md#7-dùng-plug
 | [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | Cài pipeline vào một repo dự án bằng một lệnh (file, secret, settings, commit) |
 | [`scripts/upgrade.sh`](scripts/upgrade.sh) | Nâng cấp file đã chép trong repo dự án lên bản toolkit mới, giữ chỉnh sửa của bạn bằng 3-way merge |
 | [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
+| [`templates/scripts/agent-session.sh`](templates/scripts/agent-session.sh) | Chép vào dự án: `.env` mã hoá bằng age, storage qua rclone, phiên Claude có sandbox trên máy ([AGENT-SESSION.md](docs/AGENT-SESSION.vi.md)) |
 
 Một caller workflow trong repo dự án trông như sau (bản đầy đủ ở
 [`templates/.github/workflows/`](templates/.github/workflows)):

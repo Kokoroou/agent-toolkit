@@ -208,6 +208,9 @@ Trong Claude Code, đứng ở thư mục repo dự án (cần `gh auth login` �
 
 Cập nhật plugin: `claude plugin marketplace update agent-toolkit`.
 
+Chạy các lệnh này trong sandbox, với `.env` mã hoá và storage cho file không commit:
+[AGENT-SESSION.md](AGENT-SESSION.vi.md).
+
 ## 8. Chạy thử trên repo sandbox
 
 Trước khi dùng cho dự án thật, nên thử toàn bộ vòng trên một repo nhỏ bỏ đi được.

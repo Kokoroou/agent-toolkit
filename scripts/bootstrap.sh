@@ -142,6 +142,7 @@ while IFS= read -r -d '' f; do
   mkdir -p "$(dirname "$dst")"
   sed "s#\(kokoroou/agent-toolkit/\.github/workflows/[a-z-]*\.yml\)@main#\1@$ref#" "$f" >"$dst"
   apply_preset "$rules" "$rel" "$dst"
+  if [[ -x "$f" ]]; then chmod +x "$dst"; fi
   copied+=("$rel")
 done < <(find "$src" -type f -print0 | sort -z)
 
