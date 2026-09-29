@@ -49,6 +49,7 @@ issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implem
 |---|---|---|
 | Hiểu pipeline làm gì, chuẩn bị tài khoản, thử trên sandbox | [GETTING-STARTED.md](docs/GETTING-STARTED.vi.md) | 10 phút đọc |
 | Cài vào một dự án, sửa theo stack, nâng cấp, xử lý sự cố | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.vi.md) | tra cứu theo mục |
+| Tra nhanh một việc hay câu hỏi thường gặp ("làm sao để…", "vì sao…") | [FAQ.md](docs/FAQ.vi.md) | tra cứu |
 | Hiểu thiết kế, luồng chi tiết, các "bẫy" GitHub | [ARCHITECTURE.md](docs/ARCHITECTURE.vi.md) | 5 phút |
 | Đánh giá rủi ro bảo mật | [SECURITY.md](docs/SECURITY.vi.md) | 5 phút |
 | Tự chạy agent trên máy / Claude cloud: secret mã hoá, storage, sandbox | [AGENT-SESSION.md](docs/AGENT-SESSION.vi.md) | 10 phút |

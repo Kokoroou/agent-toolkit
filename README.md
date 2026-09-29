@@ -50,6 +50,7 @@ issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implemen
 |---|---|---|
 | Understand what the pipeline does, prepare accounts, try it on a sandbox | [GETTING-STARTED.md](docs/GETTING-STARTED.md) | 10 min |
 | Install into a project, adapt to your stack, upgrade, troubleshoot | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) | reference |
+| Look up a common task or question ("how do I…", "why does…") | [FAQ.md](docs/FAQ.md) | reference |
 | Understand the design, detailed flow, GitHub pitfalls | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 5 min |
 | Assess the security risks | [SECURITY.md](docs/SECURITY.md) | 5 min |
 | Run the agent yourself (machine / Claude cloud): encrypted secrets, storage, sandbox | [AGENT-SESSION.md](docs/AGENT-SESSION.md) | 10 min |
