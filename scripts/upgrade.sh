@@ -264,5 +264,5 @@ fi
 if [[ $attention -gt 0 ]]; then say "  - check the files marked ! above (merge any *.upstream copy by hand, then delete it)"; fi
 say "  - review: git diff"
 say "  - commit to the DEFAULT branch (workflow_run/schedule/dispatch read it from there):"
-say "      git add .github && git commit -m \"ci: upgrade agent-toolkit to $to${new_version:+ (v$new_version)}\""
+say "      git add .github .claude scripts && git commit -m \"ci: upgrade agent-toolkit to $to${new_version:+ (v$new_version)}\""
 [[ $conflicts -eq 0 ]] || exit 1

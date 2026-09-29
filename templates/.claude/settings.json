@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(rclone:*)",
+      "Bash(age:*)",
+      "Bash(age-keygen:*)",
+      "Bash(b2:*)",
+      "Bash(scripts/agent-session.sh encrypt:*)",
+      "Bash(scripts/agent-session.sh cloud-key:*)",
+      "Bash(scripts/agent-session.sh save:*)",
+      "Bash(scripts/agent-session.sh pull:*)",
+      "Read(~/.config/rclone/**)",
+      "Read(~/.config/agent-session/**)",
+      "Edit(/.agent-session.conf)",
+      "Edit(/.age-recipients)",
+      "Edit(/scripts/agent-session.sh)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x \"$CLAUDE_PROJECT_DIR/scripts/agent-session.sh\" ] && \"$CLAUDE_PROJECT_DIR/scripts/agent-session.sh\" decrypt --if-key || true"
+          }
+        ]
+      }
+    ]
+  }
+}

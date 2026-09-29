@@ -371,6 +371,7 @@ fi
 # ── 6. commit + push ────────────────────────────────────────────────────────────
 step "Commit"
 files=(.github CLAUDE.md)
+for f in .claude/settings.json scripts/agent-session.sh; do if [[ -e "$target/$f" ]]; then files+=("$f"); fi; done
 if [[ -z "$(git -C "$target" status --porcelain -- "${files[@]}")" ]]; then
   ok "nothing to commit"; commit=none
 fi

@@ -30,6 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           npm install -g @anthropic-ai/claude-code
+          sudo apt-get install -y --no-install-recommends age # agent-session.sh round trip
           # Download script from the release tag (not a moving branch).
           bash <(curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "$ACTIONLINT_VERSION"
           echo "$PWD" >>"$GITHUB_PATH"

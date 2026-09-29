@@ -46,6 +46,7 @@ issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + revi
 | Install into a project, adapt to your stack, upgrade, troubleshoot | [ADD-TO-PROJECT.md](docs/ADD-TO-PROJECT.md) | reference |
 | Understand the design, detailed flow, GitHub pitfalls | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 5 min |
 | Assess the security risks | [SECURITY.md](docs/SECURITY.md) | 5 min |
+| Run the agent yourself (machine / Claude cloud): encrypted secrets, storage, sandbox | [AGENT-SESSION.md](docs/AGENT-SESSION.md) | 10 min |
 | Change or release the toolkit itself | [MAINTAINING.md](docs/MAINTAINING.md) | maintainers |
 | History of the build-out and status of each item | [PLAN.md](docs/PLAN.md) | reference |
 
@@ -85,6 +86,10 @@ claude plugin install pipeline@agent-toolkit
 
 Command list: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-use-the-plugin-by-hand-optional).
 
+To build issues this way on your machine or in Claude cloud, with `.env` encrypted in the
+repo, untracked files on B2/Google Drive, and a sandbox that keeps the agent away from the
+storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSION.md).
+
 ## What's in this repo
 
 <details>
@@ -105,6 +110,7 @@ Command list: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-use-the-plugin-by-
 | [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | One-command install into a project repo (files, secrets, settings, commit) |
 | [`scripts/upgrade.sh`](scripts/upgrade.sh) | Upgrade the copied files to a newer toolkit release, keeping your edits via 3-way merge |
 | [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | The file copy + labels + `develop` part that `install.sh` uses |
+| [`templates/scripts/agent-session.sh`](templates/scripts/agent-session.sh) | Copied into projects: age-encrypted `.env`, rclone storage, sandboxed local Claude sessions ([AGENT-SESSION.md](docs/AGENT-SESSION.md)) |
 
 A caller workflow in a project repo looks like this (full versions in
 [`templates/.github/workflows/`](templates/.github/workflows)):

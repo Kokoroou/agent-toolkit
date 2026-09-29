@@ -63,7 +63,35 @@ parsed=$(sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description
   || { echo "templates/.github/labels.json: keep one {\"name\", \"color\", \"description\"} object per line"; exit 1; }
 
 echo "== Shell scripts"
-if command -v shellcheck >/dev/null; then shellcheck scripts/*.sh; else echo "shellcheck not installed; skipped"; fi
-for f in scripts/*.sh; do bash -n "$f"; done
+if command -v shellcheck >/dev/null; then shellcheck scripts/*.sh templates/scripts/*.sh; else echo "shellcheck not installed; skipped"; fi
+for f in scripts/*.sh templates/scripts/*.sh; do bash -n "$f"; done
+for f in templates/scripts/*.sh; do [[ -x "$f" ]] || { echo "$f must be executable (git update-index --chmod=+x)"; exit 1; }; done
+
+echo "== agent-session.sh: encrypt/decrypt round trip, generated settings"
+if command -v age >/dev/null; then
+  a="$tmp/agent-session" && mkdir -p "$a/scripts" && git -C "$a" init -q && cp templates/scripts/agent-session.sh "$a/scripts/"
+  (
+    # One check per line: set -e (inherited) stops at the first failing one.
+    cd "$a"
+    export HOME="$a/home" XDG_CONFIG_HOME="" XDG_STATE_HOME=""
+    unset AGE_SECRET_KEY
+    scripts/agent-session.sh init >/dev/null
+    echo 'K=v#1' >.env
+    scripts/agent-session.sh encrypt 2>/dev/null
+    git check-ignore -q .env
+    if git check-ignore -q .env.age; then exit 1; fi
+    rm .env
+    scripts/agent-session.sh decrypt 2>/dev/null
+    [[ "$(cat .env)" == 'K=v#1' ]]
+    scripts/agent-session.sh settings \
+      | jq -e '.sandbox.enabled and .sandbox.network.strictAllowlist and (.permissions.deny | index("Bash(rclone:*)"))' >/dev/null
+    mv home/.config/agent-session home/key-elsewhere
+    rm .env
+    scripts/agent-session.sh decrypt --if-key
+    [[ ! -e .env ]]
+  )
+else
+  echo "age not installed; skipped"
+fi
 
 echo "OK"
