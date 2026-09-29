@@ -191,12 +191,18 @@ install_pkg() { # <command> <brew> <apt> <dnf> <winget id> <url>
 }
 command -v git >/dev/null || install_pkg git git git git Git.Git https://git-scm.com/downloads
 command -v gh >/dev/null || install_pkg gh gh gh gh GitHub.cli https://cli.github.com
+gh_at_least() { # <major> <minor> — true if the installed gh is at least that version
+  [[ "$(gh --version 2>/dev/null)" =~ ([0-9]+)\.([0-9]+) ]] || return 1
+  (( BASH_REMATCH[1] > $1 || (BASH_REMATCH[1] == $1 && BASH_REMATCH[2] >= $2) ))
+}
 ok "git $(git --version | awk '{print $3}'), gh $(gh --version | awk 'NR==1{print $3}')"
 
 if ! gh auth status >/dev/null 2>&1; then
   [[ "$interactive" == true ]] || die "gh is not logged in — run 'gh auth login' (or set GH_TOKEN) first"
   echo "  gh is not logged in; starting 'gh auth login'…"
-  gh auth login -h github.com -p https -w <"$tty"
+  login=(-h github.com -w)
+  gh_at_least 2 6 && login+=(-p https) # older gh has no -p and asks for the protocol
+  gh auth login "${login[@]}" <"$tty"
 fi
 ok "gh logged in as $(gh api user --jq .login)"
 
@@ -282,8 +288,12 @@ fi
 # Values given as options/environment/config are always written. Otherwise an existing
 # secret is kept (interactive runs are asked whether to replace it) and a missing one is
 # asked for.
-# gh api rather than 'gh secret list --json' (newer gh only), so distro-packaged gh works too.
-existing=" $(gh api "repos/$repo/actions/secrets" --paginate --jq '.secrets[].name' 2>/dev/null | tr '\n' ' ') "
+if gh_at_least 2 36; then
+  existing=$(gh secret list --repo "$repo" --json name --jq '.[].name' 2>/dev/null)
+else # older gh has no 'secret list --json'
+  existing=$(gh api "repos/$repo/actions/secrets" --paginate --jq '.secrets[].name' 2>/dev/null)
+fi
+existing=" $(tr '\n' ' ' <<<"$existing") "
 keep_existing() { # <name>... — true if one of them exists and should be kept
   local s
   for s in "$@"; do

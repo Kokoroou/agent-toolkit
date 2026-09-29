@@ -241,13 +241,21 @@ fi
   sort -u "$tmp/managed"
 } >"$lock"
 
+gh_at_least() { # <major> <minor> — true if the installed gh is at least that version
+  [[ "$(gh --version 2>/dev/null)" =~ ([0-9]+)\.([0-9]+) ]] || return 1
+  (( BASH_REMATCH[1] > $1 || (BASH_REMATCH[1] == $1 && BASH_REMATCH[2] >= $2) ))
+}
 if [[ "$labels" == true ]] && command -v gh >/dev/null \
    && repo=$(cd "$target" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
+  label_force=false; gh_at_least 2 9 && label_force=true # 'gh label create --force'
   sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description": *"\([^"]*\)".*/\1\t\2\t\3/p' \
     "$tmp/new-tk/templates/.github/labels.json" | while IFS=$'\t' read -r name color desc; do
-    # gh api rather than 'gh label' (gh >= 2.18), so distro-packaged gh works too.
-    gh api "repos/$repo/labels" -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1 \
-      || gh api -X PATCH "repos/$repo/labels/$name" -f color="$color" -f description="$desc" >/dev/null || true
+    if [[ "$label_force" == true ]]; then
+      gh label create "$name" --repo "$repo" --force --color "$color" --description "$desc" >/dev/null || true
+    else # older gh (e.g. distro packages): create, or update the existing label
+      gh api "repos/$repo/labels" -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1 \
+        || gh api -X PATCH "repos/$repo/labels/$name" -f color="$color" -f description="$desc" >/dev/null || true
+    fi
   done
   say "labels of $repo updated"
 fi
