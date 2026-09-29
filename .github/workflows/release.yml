@@ -83,6 +83,62 @@ jobs:
           release-type: ${{ inputs.config-file == '' && inputs.release-type || '' }}
           config-file: ${{ inputs.config-file }}
           manifest-file: ${{ inputs.manifest-file }}
+      # release-please lists every commit, so a change that reaches main through more than
+      # one commit with the same message (e.g. cherry-picked, or merged via develop and a
+      # hotfix) appears several times. Collapse identical entries in the same section into
+      # one line listing all commits — `* msg ([a](…), [b](…))` — in the release PR body
+      # (which becomes the GitHub Release notes on merge) and in the CHANGELOG files of the
+      # release branch. Re-applied on every run, since release-please rewrites both.
+      - name: Merge duplicate changelog entries
+        if: steps.rp.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          PR: ${{ steps.rp.outputs.pr }}
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/dedupe.py" <<'PY'
+          import re, sys
+          # `* text ([sha](url))rest` — release-please's entry format (rest: ", closes #N").
+          entry = re.compile(r"^(\* .*?) \((\[[0-9a-f]{7,40}\]\([^)]*\))\)(.*)$")
+          out, seen = [], {}
+          for line in sys.stdin.read().split("\n"):
+              m = entry.match(line)
+              if not m:
+                  if line.startswith("#") or line.startswith("<"):
+                      seen = {}  # new section / package: only merge within one list
+                  out.append(line)
+                  continue
+              key = (m.group(1), m.group(3))
+              if key in seen:
+                  links = out[seen[key]][1]
+                  if m.group(2) not in links:
+                      links.append(m.group(2))
+                  continue
+              seen[key] = len(out)
+              out.append((key, [m.group(2)]))
+          sys.stdout.write("\n".join(
+              l if isinstance(l, str) else f"{l[0][0]} ({', '.join(l[1])}){l[0][1]}" for l in out))
+          PY
+          number=$(jq -r .number <<<"$PR")
+          branch=$(jq -r .headBranchName <<<"$PR")
+
+          gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json body --jq .body >"$RUNNER_TEMP/body.md"
+          python3 "$RUNNER_TEMP/dedupe.py" <"$RUNNER_TEMP/body.md" >"$RUNNER_TEMP/body.new.md"
+          if ! cmp -s "$RUNNER_TEMP/body.md" "$RUNNER_TEMP/body.new.md"; then
+            gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/body.new.md"
+          fi
+
+          # CHANGELOG files on the release branch, via the contents API (no checkout).
+          for path in $(gh api "repos/$GITHUB_REPOSITORY/pulls/$number/files" --paginate \
+            --jq '.[] | select(.filename | test("(^|/)CHANGELOG\\.md$")) | .filename'); do
+            meta=$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=$branch")
+            jq -r .content <<<"$meta" | base64 -d >"$RUNNER_TEMP/cl.md"
+            python3 "$RUNNER_TEMP/dedupe.py" <"$RUNNER_TEMP/cl.md" >"$RUNNER_TEMP/cl.new.md"
+            cmp -s "$RUNNER_TEMP/cl.md" "$RUNNER_TEMP/cl.new.md" && continue
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f message="chore: merge duplicate changelog entries" -f branch="$branch" \
+              -f sha="$(jq -r .sha <<<"$meta")" -f content="$(base64 -w0 <"$RUNNER_TEMP/cl.new.md")" >/dev/null
+          done
 
   build:
     needs: release-please
