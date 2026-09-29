@@ -1,7 +1,7 @@
 ---
 name: build
-description: Build a triaged GitHub issue end to end from an interactive Claude Code session (on the person's machine or on Claude Code on the web) — branch, plan, implement, verify, then push and open the agent PR that review and the merge gate expect. With `pr <n>` it fixes an agent PR whose CI or review failed. Use when the person asks to build / implement / "thi công" an issue, or to fix an agent PR. Never use it in GitHub Actions or other non-interactive runs.
-argument-hint: <issue-number> | pr <pr-number>
+description: Build a triaged GitHub issue end to end from an interactive Claude Code session (on the person's machine or on Claude Code on the web) — branch, plan, implement, verify, then push and open the agent PR that review and the merge gate expect. With `pr <n>` it fixes an agent PR whose CI or review failed. Without arguments it collects the ready issues and red agent PRs, ranks them, proposes a build order and works through the list the person approves. Use when the person asks to build / implement / "thi công" an issue or "what's next", or to fix an agent PR. Never use it in GitHub Actions or other non-interactive runs.
+argument-hint: "[<issue-number> | pr <pr-number>]"
 ---
 
 # Build an issue (or fix an agent PR) in this session
@@ -20,7 +20,8 @@ Arguments: `$ARGUMENTS`
 - Parse the arguments:
   - `42` or `#42` → **issue mode**, issue 42.
   - `pr 57`, `fix 57` or `#57` when 57 is a pull request → **PR mode**, PR 57.
-  - nothing → list the issues labelled `ready-for-plan` and ask which one to build.
+  - nothing → **queue mode** (section 4): rank the open work, propose an order, then build
+    the approved items one after another.
 - **GitHub access.** Use `gh` if `gh auth status` succeeds; otherwise use the GitHub MCP
   tools (Claude Code on the web). Pick one and use it for every GitHub step below.
 - **Base branch:** `develop` if `origin/develop` exists, else the repository's default
@@ -121,9 +122,11 @@ Push and open the PR:
 
 **If the push is refused** because the session forbids it — for example inside
 `scripts/agent-session.sh run`, whose sandbox blocks `git push` and `gh pr create` — do not
-try another way round it. Write `.agent-local/pr.md`:
+try another way round it. Write `.agent-local/pr/<branch with / replaced by ->.md`, e.g.
+`.agent-local/pr/agent-issue-42.md`:
 
 ```
+branch: <branch>
 issue: <n>
 base: <base>
 title: <PR title>
@@ -135,11 +138,67 @@ labels: <risk:high and/or needs-human, or leave empty>
 In PR mode write `pr: <n>` instead of `issue:` and `title:`, and put the two-or-three-line
 root cause and fix below `---` (it becomes the PR comment).
 
-and tell the person to exit Claude: `run` then offers to publish, or they can run
-`scripts/agent-session.sh publish` themselves. That command pushes the branch and opens
-(or updates) the PR outside the sandbox after they confirm.
+Then tell the person that the branch waits for publishing: when they exit Claude, `run`
+offers to publish every waiting branch, or they can run `scripts/agent-session.sh publish`
+themselves. That command pushes each branch and opens (or comments on) its PR outside the
+sandbox after they confirm. In queue mode, carry on with the next item.
 
-## 4. Stop conditions
+## 4. Queue mode (no arguments)
+
+**Collect** (one listing call each, not one call per item):
+
+- open issues labelled `ready-for-plan`, with labels, creation date and body;
+- open PRs labelled `agent`, with their head branch, labels, body and check state
+  (`gh pr list --label agent --json number,title,headRefName,labels,body,statusCheckRollup`,
+  or the MCP equivalent).
+
+**Drop**, and list with the reason at the end of the proposal:
+
+- anything labelled `needs-human` or `do-not-merge`;
+- issues that already have an open PR (a PR body with `Closes #<n>`, or head
+  `agent/issue-<n>`) — the PR is the item now;
+- agent PRs whose checks are green or still running (nothing to do; the merge gate has
+  them);
+- items waiting on another open issue: the body says `depends on #N`, `blocked by #N`,
+  `after #N` or similar and #N is still open. A branch starts from `<base>`, so it cannot
+  build on #N until #N's PR is merged. If #N is itself in the queue, say "after #N merges".
+
+**Rank** what is left:
+
+1. agent PRs with failing checks or a `changes requested` review (finish work in flight
+   before starting new work), oldest first;
+2. then issues by `priority:P0` → `P3` (no priority label: after `P3`);
+3. ties: `type:bug` before other types, then smaller `size:` (XS → XL), then older first.
+
+`risk:high` items stay in the list but are marked: they will never auto-merge and need a
+person's review after the build.
+
+**Propose.** Show one numbered table — `#`, kind (fix / build), number, title, priority,
+risk, size, and a one-line reason for its place — then the dropped items. Recommend
+building the first few (at most 5 in one session: every build adds to this session's
+context and each PR still needs review). Ask the person which to build and in what order;
+they can take the proposal, pick numbers, reorder, or stop here. Also ask once whether to
+push each item without asking again (the default is to ask before every push).
+
+If this session may push only to one branch of its own (common on Claude Code on the web),
+it can publish one item: build the first approved item here, and give the person a
+`/pipeline:build <n>` line for each of the others to start in a new session each.
+
+**Build one after another.** For each approved item, in order:
+
+1. Return to a clean state: the previous item is published (or written to
+   `.agent-local/pr/`) and `git status` is clean; `git switch --detach origin/<base>` after
+   `git fetch origin <base>`. Items never build on each other's branches.
+2. Run issue mode (section 1) or PR mode (section 2), then section 3.
+3. Report one line — item, result (PR URL / waiting for publish / blocked and why) — and
+   move on. An item that is blocked or fails its checks is skipped, not retried in a loop;
+   ask the person only when the answer changes what you build.
+
+Stop the queue early when the person says so or when two items in a row end blocked.
+Finish with a summary table: item, branch, PR (or "waiting for publish"), status, and what
+the person still has to do (review a `risk:high` PR, answer a question, run `publish`).
+
+## 5. Stop conditions
 
 Stop and tell the person — never push — when the plan is blocked, the checks still fail
 after a reasonable attempt, or the work would need changes outside the issue's scope. Say

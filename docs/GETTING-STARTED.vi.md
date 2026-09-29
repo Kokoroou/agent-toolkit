@@ -206,6 +206,7 @@ Trong Claude Code, đứng ở thư mục repo dự án (cần `gh auth login` �
 | Lệnh | Làm gì |
 |---|---|
 | `/pipeline:build 42` | **Thi công issue #42 từ đầu đến cuối**: branch, kế hoạch, code, kiểm tra, rồi (sau khi bạn xác nhận) push + PR có `Closes #42` và nhãn `agent`. Hoặc chỉ cần nói "thi công issue 42" |
+| `/pipeline:build` | Không tham số: gom issue đã sẵn sàng và PR agent bị đỏ, loại việc đang bị chặn, xếp hạng (PR đỏ trước, rồi priority P0→P3, bug, size nhỏ, cũ hơn), đề xuất thứ tự và thi công lần lượt những việc bạn duyệt. Hoặc hỏi "nên làm gì tiếp?" |
 | `/pipeline:build pr 57` | Sửa PR agent #57 theo log CI đỏ / review, rồi push |
 | `/pipeline:triage-issue 42` | Chấm điểm, phân loại issue #42, đề xuất câu hỏi làm rõ |
 | `/pipeline:plan-feature 42` | Lập kế hoạch theo file cho issue #42, không sửa code |

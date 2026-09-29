@@ -596,6 +596,7 @@ cần dò nữa.
 |---|---|
 | Giao việc cho agent | Mở issue bằng template; triage tự quyết |
 | Thi công một issue đã sẵn sàng | Trong Claude Code trên dự án (máy bạn hoặc web): `/pipeline:build N`, hoặc "thi công issue N". Xác nhận push khi được hỏi |
+| Làm dần backlog | `/pipeline:build` không tham số: xếp hạng issue sẵn sàng và PR agent bị đỏ, đề xuất thứ tự, thi công lần lượt những việc bạn duyệt |
 | Sửa PR agent bị đỏ | `/pipeline:build pr P` (merge gate comment sẵn lệnh này trên PR) |
 | Build một issue size L hoặc đã bị `needs-human` | Sửa issue cho rõ, bỏ nhãn `needs-human`, rồi `/pipeline:build N` (hoặc gắn **`agent:implement`** để build trên Actions) |
 | Triage lại issue | Gắn nhãn `needs-triage` hoặc *Actions → Agent Triage → Run workflow* |

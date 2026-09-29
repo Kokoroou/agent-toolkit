@@ -159,11 +159,13 @@ Cần Claude Code v2.1.219 trở lên. Trên Linux/WSL2 cần thêm `bubblewrap`
 scripts/agent-session.sh run                         # tương tác
 scripts/agent-session.sh run -- --permission-mode auto
 # trong Claude: /pipeline:build 42   (hoặc: "thi công issue 42"; PR đỏ: /pipeline:build pr 57)
+#                /pipeline:build      (không tham số: danh sách xếp hạng việc nên làm tiếp)
 ```
 
 Skill tạo branch `agent/issue-42`, lập kế hoạch, viết code và chạy kiểm tra. Sandbox chặn
-`git push` và `gh pr create`, nên skill ghi tiêu đề và nội dung PR vào `.agent-local/pr.md`
-rồi bảo bạn thoát Claude.
+`git push` và `gh pr create`, nên skill ghi tiêu đề và nội dung PR vào
+`.agent-local/pr/agent-issue-42.md`. Ở chế độ hàng đợi, nó làm tiếp việc sau trên branch
+riêng; các branch chờ bạn publish khi thoát Claude.
 
 `run` làm những việc sau:
 
@@ -183,8 +185,9 @@ rồi bảo bạn thoát Claude.
      đăng thứ gì đó lên (gist, release, comment, tạo PR…).
 
    Xem file chính xác bằng `scripts/agent-session.sh settings`.
-4. Khi Claude thoát và có `.agent-local/pr.md`, chạy `publish`: từ chối nếu file tin tưởng
-   bị sửa hoặc còn thay đổi chưa commit, hiện các commit, diff stat và mọi thay đổi trong
+4. Khi Claude thoát và `.agent-local/pr/` có file, chạy `publish` cho từng branch: từ chối
+   nếu file tin tưởng bị sửa hoặc branch còn thay đổi chưa commit, hiện các commit, diff
+   stat và mọi thay đổi trong
    `.github/workflows`, rồi sau khi bạn xác nhận thì push branch (bỏ qua git hook) và mở PR
    có `Closes #N` với nhãn `agent` — hoặc, khi sửa PR, push và comment tóm tắt. Bạn cũng có
    thể tự chạy `scripts/agent-session.sh publish` sau.
@@ -307,7 +310,7 @@ Hãy giữ như vậy:
 | `decrypt [--force] [--if-key]` | `<file>.age` → `<file>`. Giữ file local khác nội dung trừ khi có `--force`. `--if-key` không làm gì khi thiếu key hoặc thiếu `age` |
 | `pull` | `PULL_REMOTE` → `IN_DIR` |
 | `run [--no-pull] [-- <tham số claude>]` | decrypt + pull + Claude trong sandbox + hỏi publish và save |
-| `publish [--yes] [--trust-changes]` | Push branch hiện tại và mở PR theo `.agent-local/pr.md` (do `/pipeline:build` ghi); khi sửa PR thì push và comment. Hỏi trước khi làm |
+| `publish [--yes] [--trust-changes]` | Với mỗi file trong `.agent-local/pr/` (do `/pipeline:build` ghi): push branch và mở PR, hoặc khi sửa PR thì push và comment. Hỏi trước từng cái; file lỗi được giữ lại cho lần sau |
 | `save [--yes] [--trust-changes]` | Kiểm tra rồi upload `OUT_DIR` lên `PUSH_REMOTE/<stamp>/`. `--yes` bắt buộc phải có gitleaks |
 | `settings` | In settings sandbox được sinh ra |
 

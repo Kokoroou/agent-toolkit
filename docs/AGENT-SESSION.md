@@ -157,11 +157,13 @@ Requires Claude Code v2.1.219 or later. On Linux/WSL2 you also need `bubblewrap`
 scripts/agent-session.sh run                         # interactive
 scripts/agent-session.sh run -- --permission-mode auto
 # inside Claude: /pipeline:build 42   (or: "build issue 42"; a red PR: /pipeline:build pr 57)
+#                /pipeline:build      (no argument: ranked list of what to build next)
 ```
 
 The skill creates the `agent/issue-42` branch, plans, implements and runs the checks. The
 sandbox denies `git push` and `gh pr create`, so it writes the PR title and body to
-`.agent-local/pr.md` instead and asks you to exit.
+`.agent-local/pr/agent-issue-42.md` instead. In queue mode it goes on to the next item on
+its own branch; the branches wait for you to publish them when you exit.
 
 `run` does the following:
 
@@ -181,8 +183,9 @@ sandbox denies `git push` and `gh pr create`, so it writes the PR title and body
      publish something (gists, releases, comments, PR creation…) are denied.
 
    Run `scripts/agent-session.sh settings` to see the exact file.
-4. When Claude exits and `.agent-local/pr.md` exists, runs `publish`: it refuses if a
-   trusted file changed or the tree is dirty, shows the commits, the diff stat and any
+4. When Claude exits and `.agent-local/pr/` has files, runs `publish`, one branch at a
+   time: it refuses if a trusted file changed or the branch is dirty, shows the commits,
+   the diff stat and any
    `.github/workflows` change, then after you confirm pushes the branch (git hooks
    skipped) and opens the PR with `Closes #N` and the `agent` label — or, for a PR fix,
    pushes and comments the summary. You can also run `scripts/agent-session.sh publish`
@@ -311,7 +314,7 @@ person.
 | `decrypt [--force] [--if-key]` | `<file>.age` → `<file>`. Keeps a local file that differs unless `--force`. `--if-key` does nothing when no key or no `age` is available |
 | `pull` | `PULL_REMOTE` → `IN_DIR` |
 | `run [--no-pull] [-- <claude args>]` | decrypt + pull + sandboxed Claude + offer to publish and save |
-| `publish [--yes] [--trust-changes]` | Pushes the current branch and opens its PR from `.agent-local/pr.md` (written by `/pipeline:build`); for a PR fix, pushes and comments. Asks first |
+| `publish [--yes] [--trust-changes]` | For each file in `.agent-local/pr/` (written by `/pipeline:build`): pushes its branch and opens the PR, or for a PR fix pushes and comments. Asks before each; a file that fails stays for the next run |
 | `save [--yes] [--trust-changes]` | Checks, then uploads `OUT_DIR` to `PUSH_REMOTE/<stamp>/`. `--yes` requires gitleaks |
 | `settings` | Prints the generated sandbox settings |
 

@@ -96,7 +96,8 @@ Command list: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-use-the-plugin-by-
 your machine or on the web — run `/pipeline:build 42`, or just ask Claude to build issue
 42. It branches, plans, implements, runs the checks, then pushes and opens the `agent` PR
 that review and the merge gate pick up. `/pipeline:build pr 57` fixes a PR whose checks
-failed. For `.env` encrypted in the repo, untracked files on B2/Google Drive and a sandbox
+failed. `/pipeline:build` with no argument ranks the ready issues and red PRs, proposes an
+order, and builds the ones you approve one after another. For `.env` encrypted in the repo, untracked files on B2/Google Drive and a sandbox
 that keeps the agent away from the storage: `scripts/agent-session.sh run` →
 [AGENT-SESSION.md](docs/AGENT-SESSION.md).
 

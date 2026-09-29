@@ -209,6 +209,7 @@ can read issues/PRs):
 | Command | What it does |
 |---|---|
 | `/pipeline:build 42` | **Build issue #42 end to end**: branch, plan, implement, checks, then (after you confirm) push + PR with `Closes #42` and label `agent`. Or just ask "build issue 42" |
+| `/pipeline:build` | No argument: collects ready issues and red agent PRs, drops blocked ones, ranks them (red PRs first, then priority P0→P3, bugs, smaller size, older), proposes an order and builds the ones you approve one after another. Or ask "what should we build next?" |
 | `/pipeline:build pr 57` | Fix agent PR #57 from its failing CI log / review findings, then push |
 | `/pipeline:triage-issue 42` | Score and classify issue #42, suggest clarifying questions |
 | `/pipeline:plan-feature 42` | Plan issue #42 file by file, no code changes |

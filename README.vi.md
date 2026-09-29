@@ -94,7 +94,9 @@ Danh sách lệnh: [GETTING-STARTED §7](docs/GETTING-STARTED.vi.md#7-dùng-plug
 **Thi công một issue** (cách mặc định): trong một phiên Claude Code trên dự án — trên máy
 bạn hoặc trên web — gõ `/pipeline:build 42`, hoặc chỉ cần bảo Claude "thi công issue 42".
 Skill tạo branch, lập kế hoạch, viết code, chạy kiểm tra, rồi push và mở PR `agent` để
-review và merge gate xử lý tiếp. `/pipeline:build pr 57` sửa một PR bị đỏ. Muốn `.env` mã
+review và merge gate xử lý tiếp. `/pipeline:build pr 57` sửa một PR bị đỏ.
+`/pipeline:build` không tham số sẽ xếp hạng các issue sẵn sàng và PR đỏ, đề xuất thứ tự,
+rồi thi công lần lượt những việc bạn duyệt. Muốn `.env` mã
 hoá trong repo, file không commit để trên B2/Google Drive và sandbox chặn agent khỏi
 storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSION.vi.md).
 

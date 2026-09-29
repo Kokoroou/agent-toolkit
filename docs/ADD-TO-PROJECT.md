@@ -613,6 +613,7 @@ new version placed next to them as `<file>.upstream` — merge by hand, then del
 |---|---|
 | Give the agent work | Open an issue from a template; triage decides |
 | Build a ready issue | In Claude Code on the project (your machine or the web): `/pipeline:build N`, or "build issue N". Confirm the push when asked |
+| Work through the backlog | `/pipeline:build` with no argument: it ranks ready issues and red agent PRs, proposes an order, and builds what you approve one by one |
 | Fix a red agent PR | `/pipeline:build pr P` (the merge gate comments it on the PR) |
 | Build a size-L issue or one marked `needs-human` | Clarify the issue, remove `needs-human`, then `/pipeline:build N` (or add **`agent:implement`** to build on Actions) |
 | Re-triage an issue | Add the `needs-triage` label or *Actions → Agent Triage → Run workflow* |
