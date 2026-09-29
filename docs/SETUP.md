@@ -11,4 +11,5 @@ The setup instructions are split by reader:
 | A maintainer of `kokoroou/agent-toolkit` | [MAINTAINING.md](MAINTAINING.md) | Toolkit repo setup, lint, change process, sandbox testing, releases, breaking changes |
 
 Design and detailed flow: [ARCHITECTURE.md](ARCHITECTURE.md). Security review and
-scanning tools: [SECURITY.md](SECURITY.md).
+scanning tools: [SECURITY.md](SECURITY.md). Common tasks and questions:
+[FAQ.md](FAQ.md).

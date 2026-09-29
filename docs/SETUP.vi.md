@@ -11,4 +11,5 @@ Hướng dẫn cài đặt được tách theo người đọc:
 | Người bảo trì repo `kokoroou/agent-toolkit` | [MAINTAINING.md](MAINTAINING.vi.md) | Thiết lập repo toolkit, lint, quy trình thay đổi, thử trên sandbox, phát hành, breaking change |
 
 Thiết kế và luồng chi tiết: [ARCHITECTURE.md](ARCHITECTURE.vi.md). Đánh giá bảo mật và các
-công cụ quét: [SECURITY.md](SECURITY.vi.md).
+công cụ quét: [SECURITY.md](SECURITY.vi.md). Việc và câu hỏi thường gặp:
+[FAQ.md](FAQ.vi.md).
