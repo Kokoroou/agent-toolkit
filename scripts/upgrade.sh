@@ -245,7 +245,9 @@ if [[ "$labels" == true ]] && command -v gh >/dev/null \
    && repo=$(cd "$target" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null); then
   sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description": *"\([^"]*\)".*/\1\t\2\t\3/p' \
     "$tmp/new-tk/templates/.github/labels.json" | while IFS=$'\t' read -r name color desc; do
-    gh label create "$name" --repo "$repo" --force --color "$color" --description "$desc" >/dev/null || true
+    # gh api rather than 'gh label' (gh >= 2.18), so distro-packaged gh works too.
+    gh api "repos/$repo/labels" -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1 \
+      || gh api -X PATCH "repos/$repo/labels/$name" -f color="$color" -f description="$desc" >/dev/null || true
   done
   say "labels of $repo updated"
 fi

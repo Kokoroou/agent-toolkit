@@ -185,7 +185,9 @@ if [[ "$labels" == true ]] && command -v gh >/dev/null; then
   echo "Creating labels in $repo"
   sed -n 's/.*"name": *"\([^"]*\)", *"color": *"\([^"]*\)", *"description": *"\([^"]*\)".*/\1\t\2\t\3/p' \
     "$src/.github/labels.json" | while IFS=$'\t' read -r name color desc; do
-    gh label create "$name" --repo "$repo" --force --color "$color" --description "$desc" >/dev/null
+    # gh api rather than 'gh label' (gh >= 2.18), so distro-packaged gh works too.
+    gh api "repos/$repo/labels" -f name="$name" -f color="$color" -f description="$desc" >/dev/null 2>&1 \
+      || gh api -X PATCH "repos/$repo/labels/$name" -f color="$color" -f description="$desc" >/dev/null
   done
   default=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.name)
   if ! gh api "repos/$repo/branches/develop" >/dev/null 2>&1; then

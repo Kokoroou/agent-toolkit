@@ -282,7 +282,8 @@ fi
 # Values given as options/environment/config are always written. Otherwise an existing
 # secret is kept (interactive runs are asked whether to replace it) and a missing one is
 # asked for.
-existing=" $(gh secret list --repo "$repo" --json name --jq '.[].name' 2>/dev/null | tr '\n' ' ') "
+# gh api rather than 'gh secret list --json' (newer gh only), so distro-packaged gh works too.
+existing=" $(gh api "repos/$repo/actions/secrets" --paginate --jq '.secrets[].name' 2>/dev/null | tr '\n' ' ') "
 keep_existing() { # <name>... — true if one of them exists and should be kept
   local s
   for s in "$@"; do
