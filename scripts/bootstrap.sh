@@ -41,9 +41,10 @@ src="$toolkit/templates"
 # files say it uses, so no command is written for a tool the project does not have (an
 # empty command skips that CI step). Tools are "key=value,..." — JS stacks: lint=script|
 # eslint|biome|none, format=script|prettier|biome|none, test=vitest|jest|script|none,
-# coverage=yes|no, build=yes|no, tsc=yes|no ("script" = the package.json script: lint,
-# format:check, test); python: lint=ruff|flake8|none, format=ruff|black|none,
-# test=pytest|none, coverage=yes|no; go and none have no keys.
+# coverage=yes|no, build=yes|no, tsc=yes|no, smoke=yes|no ("script" = the package.json
+# script: lint, format:check, test); python: lint=ruff|flake8|none, format=ruff|black|none,
+# test=pytest|none, coverage=yes|no, smoke=yes|no; go and none have no keys. smoke=yes
+# needs a smoke test to exist (the merge gate reverts a merge when smoke-command fails).
 # A preset rewrites single lines: <file> TAB <line prefix> TAB <new value>. The key is the
 # prefix up to its first ":"; a folded (">-") value keeps its style and its continuation
 # lines are dropped.
@@ -71,6 +72,14 @@ pkg_script() { # <name> — scripts.<name> exists (npm's "no test specified" stu
 has_file() { # <glob> relative to the project
   compgen -G "$target/$1" >/dev/null
 }
+has_smoke_test() { # a JS test file with "smoke" in its path (the runners' name filter)
+  [[ -n "$(cd "$target" && find . \( -name node_modules -o -name .git \) -prune -o -type f -ipath '*smoke*' \
+    \( -name '*.test.*' -o -name '*.spec.*' \) -print -quit 2>/dev/null)" ]]
+}
+has_smoke_mark() { # a pytest test marked smoke (what `pytest -m smoke` selects)
+  grep -rqs --include='*.py' --exclude-dir=.git --exclude-dir=.venv --exclude-dir=venv \
+    'mark\.smoke' "$target"
+}
 py_has() { # <tool> — named in the Python project/requirements/config files
   local f
   for f in "$target"/pyproject.toml "$target"/setup.cfg "$target"/setup.py "$target"/tox.ini \
@@ -81,12 +90,12 @@ py_has() { # <tool> — named in the Python project/requirements/config files
 }
 
 detect_tools() { # <stack> → tools spec
-  local lint=none format=none test=none coverage=no build=no tsc=no
+  local lint=none format=none test=none coverage=no build=no tsc=no smoke=no
   case "$1" in
     node|pnpm|yarn)
       if [[ ! -f "$target/package.json" ]]; then
         # Not scaffolded yet: rely on the package.json scripts every tool can sit behind.
-        echo "lint=script,format=none,test=script,coverage=no,build=yes,tsc=no"; return
+        echo "lint=script,format=none,test=script,coverage=no,build=yes,tsc=no,smoke=no"; return
       fi
       if pkg_script lint; then lint=script
       elif pkg_has eslint; then lint=eslint
@@ -101,10 +110,11 @@ detect_tools() { # <stack> → tools spec
       elif pkg_script test; then test=script; fi
       if pkg_script build; then build=yes; fi
       if pkg_has typescript; then tsc=yes; fi
-      echo "lint=$lint,format=$format,test=$test,coverage=$coverage,build=$build,tsc=$tsc" ;;
+      if [[ "$test" != none ]] && has_smoke_test; then smoke=yes; fi
+      echo "lint=$lint,format=$format,test=$test,coverage=$coverage,build=$build,tsc=$tsc,smoke=$smoke" ;;
     python)
       if [[ ! -f "$target/pyproject.toml" && ! -f "$target/setup.py" && ! -f "$target/requirements.txt" ]]; then
-        echo "lint=ruff,format=ruff,test=pytest,coverage=yes"; return # not scaffolded yet: the usual pair
+        echo "lint=ruff,format=ruff,test=pytest,coverage=yes,smoke=no"; return # not scaffolded yet: the usual pair
       fi
       if py_has ruff || has_file 'ruff.toml' || has_file '.ruff.toml'; then lint=ruff
       elif py_has flake8 || has_file '.flake8'; then lint=flake8; fi
@@ -113,8 +123,9 @@ detect_tools() { # <stack> → tools spec
       if py_has pytest || has_file 'pytest.ini' || has_file 'conftest.py' || has_file 'tests/conftest.py'; then
         test=pytest
         if py_has pytest-cov; then coverage=yes; fi
+        if has_smoke_mark; then smoke=yes; fi
       fi
-      echo "lint=$lint,format=$format,test=$test,coverage=$coverage" ;;
+      echo "lint=$lint,format=$format,test=$test,coverage=$coverage,smoke=$smoke" ;;
     go|none) echo "" ;;
     *) echo "error: unknown --stack '$1' (auto|node|pnpm|yarn|python|go|none)" >&2; exit 1 ;;
   esac
@@ -124,8 +135,8 @@ merge_tools() { # <spec> <overrides> → spec with the overridden keys, validate
   local out="$1" kv k p new allowed
   local -a kvs parts
   case "$stack" in
-    node|pnpm|yarn) allowed=" lint:script|eslint|biome|none format:script|prettier|biome|none test:vitest|jest|script|none coverage:yes|no build:yes|no tsc:yes|no " ;;
-    python) allowed=" lint:ruff|flake8|none format:ruff|black|none test:pytest|none coverage:yes|no " ;;
+    node|pnpm|yarn) allowed=" lint:script|eslint|biome|none format:script|prettier|biome|none test:vitest|jest|script|none coverage:yes|no build:yes|no tsc:yes|no smoke:yes|no " ;;
+    python) allowed=" lint:ruff|flake8|none format:ruff|black|none test:pytest|none coverage:yes|no smoke:yes|no " ;;
     *) allowed=" " ;;
   esac
   IFS=, read -ra kvs <<<"$2"
@@ -193,6 +204,7 @@ preset() { # <stack>; reads $tools
       esac
       if [[ "$(tool tsc)" == yes ]]; then npx_allow tsc; fi
       if [[ "$(tool build)" == yes ]]; then build="$pm run build"; fi
+      if [[ "$(tool smoke)" != yes ]]; then smoke_test=""; fi # no smoke test: just the build
       smoke="$build${build:+${smoke_test:+ && }}$smoke_test"
       allow="\"$allow\""
       eco=npm rtype=node ;;
@@ -210,7 +222,8 @@ preset() { # <stack>; reads $tools
       esac
       if [[ "$(tool lint)" == ruff || "$(tool format)" == ruff ]]; then allow+=",Bash(ruff:*)"; fi
       if [[ "$(tool test)" == pytest ]]; then
-        test="pytest" smoke="pytest -m smoke"; allow+=",Bash(pytest:*)"
+        test="pytest"; allow+=",Bash(pytest:*)"
+        if [[ "$(tool smoke)" == yes ]]; then smoke="pytest -m smoke"; fi
         if [[ "$(tool coverage)" == yes ]]; then
           covmd="pytest --cov"
           cov="pytest --cov --cov-report=term >&2 && coverage report --format=total"; allow+=",Bash(coverage:*)"
@@ -300,6 +313,13 @@ case "$stack" in
         pytest) echo "  ! no coverage gate: add pytest-cov, then set coverage-command in ci.yml (docs/ADD-TO-PROJECT.md §3.3)" ;;
         *) echo "  ! no coverage gate: coverage-command is empty (tests run via test-command)" ;;
       esac
+    fi
+    if [[ "$(tool test)" != none && "$(tool smoke)" != yes ]]; then
+      if [[ "$stack" == python ]]; then
+        echo "  ! no @pytest.mark.smoke test: no post-merge smoke test (smoke-command is empty)"
+      else
+        echo "  ! no smoke test file (*smoke*.test.*): the post-merge smoke check only builds"
+      fi
     fi ;;
   none) echo "  ! stack 'none': every command is empty; fill in the \"edit for your stack\" blocks" ;;
 esac

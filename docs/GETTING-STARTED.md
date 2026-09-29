@@ -251,10 +251,9 @@ npx prettier --write . && npm run lint && npm test   # all three must pass befor
 git add -A && git commit -m "chore: initial sandbox" && git push -u origin HEAD
 ```
 
-The template's default `smoke-command` is `npm run build && npm test -- smoke` (a
-positional path pattern — works with both Jest 29 and Jest 30, which dropped
-`--testPathPattern`); for this sandbox change it to `npm test` (or add a
-`test/smoke.test.js` file).
+Bootstrap sets `smoke-command` to `npm run build` here: it only adds a smoke test
+(`npx jest smoke`, a positional path pattern that works with Jest 29 and 30) when a file
+such as `test/smoke.test.js` exists.
 
 Then follow [ADD-TO-PROJECT.md](ADD-TO-PROJECT.md) with this repo (the default template is
 already Node + Jest, so the commands need almost no changes).
