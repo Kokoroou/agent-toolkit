@@ -74,7 +74,9 @@ jobs:
     with:
       issue-number: ${{ matrix.issue }}
       max-rounds: 5 # 1–5 clarification rounds
-      dispatch-on-ready: agent-implement.yml
+      # Ready issues are built by you in Claude Code (`/pipeline:build <issue>`). Set the
+      # repository variable AGENT_AUTO_BUILD=true to build them on GitHub Actions instead.
+      dispatch-on-ready: ${{ vars.AGENT_AUTO_BUILD == 'true' && 'agent-implement.yml' || '' }}
       auto-implement-max-size: M
       # project-owner: kokoroou
       # project-number: "1"

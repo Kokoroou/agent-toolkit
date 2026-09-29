@@ -3,18 +3,23 @@
 [English](README.md) · **Tiếng Việt**
 
 **Cho Claude Code tự xử lý issue GitHub: hỏi lại cho rõ, viết code + test, mở PR, review
-và merge — bạn chỉ việc mở issue và duyệt bản phát hành.**
+và merge — bạn mở issue, quyết định lúc thi công và duyệt bản phát hành.**
 
 - Chạy trên **GitHub Free**, kể cả repo private, bằng GitHub Actions.
+- Bạn quyết định khi nào thi công: triage đánh dấu issue sẵn sàng, rồi bạn gõ
+  `/pipeline:build 42` trong Claude Code trên máy mình hoặc trên web, nơi agent có đủ
+  harness của bạn (tool, hook, sandbox). Muốn thi công trên GitHub Actions thì chỉ cần đặt
+  biến repo `AGENT_AUTO_BUILD=true`.
 - Dùng chung cho mọi dự án: repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit này,
   nên nâng cấp một chỗ là mọi dự án được cập nhật.
-- An toàn mặc định: agent không cầm token ghi, việc rủi ro cao không bao giờ tự merge, mọi
+- An toàn mặc định: agent trên GitHub Actions không cầm token ghi, push từ phiên của bạn
+  chờ bạn đồng ý, việc rủi ro cao không bao giờ tự merge, mọi
   lỗi đều dừng lại chờ người (nhãn `needs-human`).
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
-            │                                          │                 │
-            └─ hỏi lại ≤5 vòng                         └─ fix ≤3 lần ────┴─ fail → needs-human / revert
+issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+            │                                                                │                │
+            └─ hỏi lại ≤5 vòng                                               └─ fix ──────────┴─ fail → needs-human / revert
 ```
 
 ## Bắt đầu trong 3 bước
@@ -86,8 +91,11 @@ claude plugin install pipeline@agent-toolkit
 
 Danh sách lệnh: [GETTING-STARTED §7](docs/GETTING-STARTED.vi.md#7-dùng-plugin-khi-làm-việc-tay-tuỳ-chọn).
 
-Muốn thi công trên máy mình hoặc trên Claude cloud (xem trạng thái trực tiếp) với `.env` mã
-hoá trong repo, file không commit để trên B2/Google Drive, và sandbox chặn agent khỏi
+**Thi công một issue** (cách mặc định): trong một phiên Claude Code trên dự án — trên máy
+bạn hoặc trên web — gõ `/pipeline:build 42`, hoặc chỉ cần bảo Claude "thi công issue 42".
+Skill tạo branch, lập kế hoạch, viết code, chạy kiểm tra, rồi push và mở PR `agent` để
+review và merge gate xử lý tiếp. `/pipeline:build pr 57` sửa một PR bị đỏ. Muốn `.env` mã
+hoá trong repo, file không commit để trên B2/Google Drive và sandbox chặn agent khỏi
 storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSION.vi.md).
 
 ## Trong repo có gì
@@ -97,7 +105,7 @@ storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSIO
 
 | Đường dẫn | Là gì |
 |---|---|
-| [`plugins/pipeline/`](plugins/pipeline) | Plugin Claude Code: sub-agent `planner` / `implementer` / `reviewer`, lệnh `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skill `pipeline-conventions` |
+| [`plugins/pipeline/`](plugins/pipeline) | Plugin Claude Code: sub-agent `planner` / `implementer` / `reviewer`, lệnh `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skill `build` (thi công / sửa PR tương tác) và `pipeline-conventions` |
 | [`.github/workflows/triage.yml`](.github/workflows/triage.yml) | Làm rõ, chấm điểm, gắn nhãn issue; thêm vào GitHub Projects |
 | [`.github/workflows/implement.yml`](.github/workflows/implement.yml) | Build agent: branch `agent/issue-N`, commit, PR; chế độ fix + circuit breaker |
 | [`.github/workflows/review.yml`](.github/workflows/review.yml) | Review PR, comment inline, commit status `agent/review` |

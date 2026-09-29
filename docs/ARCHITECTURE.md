@@ -23,12 +23,17 @@ Sections: [detailed flow](#overall-flow) · [changing requirements and cancellin
    │     ├─ needs-human  → stop
    │     ├─ reject       → comment / close if duplicate
    │     └─ ready        → ready-for-plan (+ Projects: Priority, Size)
-   │                        risk≠high && size≤M → workflow_dispatch agent-implement.yml
+   │                        comment: "Next: /pipeline:build N"
    ▼
- agent-implement.yml ─ uses ─▶ implement.yml (mode=implement)
-   │     branch agent/issue-N · plugin pipeline@agent-toolkit
-   │     /pipeline:implement-issue N → sub-agent planner → sub-agent implementer → commit
-   │     the workflow pushes + gh pr create "Closes #N" (label agent, draft if unfinished)
+ Build — default: you, in Claude Code (your machine, or on the web)
+   │     /pipeline:build N (skill) → branch agent/issue-N → sub-agent planner → sub-agent
+   │     implementer → checks → you confirm → push + PR "Closes #N" (label agent)
+   │     local sandbox (agent-session.sh run) blocks the push → `publish` does it after you exit
+   │
+   │  or on GitHub Actions: label agent:implement, or automatically when the repository
+   │  variable AGENT_AUTO_BUILD=true (risk≠high && size≤M → workflow_dispatch):
+   │     agent-implement.yml ─ uses ─▶ implement.yml (mode=implement)
+   │     /pipeline:implement-issue N with a read-only token; the publish job pushes + opens the PR
    ▼
  PR → develop ──┬─▶ ci.yml ─ uses ─▶ quality.yml   lint → format → test → coverage ≥ develop
                 │                                   PR title · Gitleaks · Semgrep
@@ -39,8 +44,9 @@ Sections: [detailed flow](#overall-flow) · [changing requirements and cancellin
    │   reads every check run + commit status of the head SHA via the Checks/Statuses API
    │   ├─ wait    → checks still running / agent/review missing
    │   ├─ blocked → needs-human, risk:high, do-not-merge, conflict, bad title
-   │   ├─ fix     → implement.yml mode=fix (CI log + review findings)
-   │   │             circuit breaker: ≥ max-fix-attempts → needs-human, stop
+   │   ├─ fix-manual → comment once per head: "/pipeline:build pr P" (default)
+   │   ├─ fix     → auto-fix (AGENT_AUTO_BUILD=true): implement.yml mode=fix (CI log + review
+   │   │             findings); circuit breaker: ≥ max-fix-attempts → needs-human, stop
    │   └─ merged  → squash, delete branch, close issue
    │                 → smoke test on develop; failure → revert PR (needs-human)
    ▼
@@ -121,7 +127,7 @@ loop needs. So:
 | Group | Labels |
 |---|---|
 | Issue state | `needs-triage` → `awaiting-clarification` → `ready-for-plan`; `needs-human` |
-| Control | `agent:implement` (added by a person to run a build), `agent` (PR created by the agent, eligible for auto-merge), `do-not-merge`, `revert` |
+| Control | `agent:implement` (added by a person to build on GitHub Actions), `agent` (PR created by the agent, eligible for auto-merge), `do-not-merge`, `revert` |
 | Classification | `type:*`, `priority:P0..P3`, `risk:low/medium/high`, `size:XS..XL` |
 
 `risk:high` is never auto-implemented or auto-merged.

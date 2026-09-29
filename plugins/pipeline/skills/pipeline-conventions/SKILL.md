@@ -30,12 +30,14 @@ your final summary which commands you inferred.
 
 | Branch            | Who writes it                | Notes                                          |
 |-------------------|------------------------------|------------------------------------------------|
-| `agent/issue-<n>` | implementer sub-agent        | one branch per issue, created by the workflow  |
+| `agent/issue-<n>` | implementer sub-agent        | one branch per issue, created by the workflow or `/pipeline:build` |
 | `develop`         | merge gate (squash merge)    | integration branch, auto-merged when CI passes |
 | `main`            | a human (`develop` → `main`) | release-please tags and builds from here       |
 
 Never push, rebase or force-push yourself; the workflow commits nothing for you but
-pushes what you committed. Never touch `main` or `develop` directly.
+pushes what you committed. The one exception is the `build` skill in an interactive
+session: it pushes the agent branch after the person confirms. Never touch `main` or
+`develop` directly.
 
 ## 3. Commits and PR titles — Conventional Commits
 

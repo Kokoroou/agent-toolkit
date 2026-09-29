@@ -213,9 +213,9 @@ calls it and then continues with secrets, settings and the commit.
    |---|---|
    | `.github/workflows/ci.yml` | CI (named `CI`): lint, format, test, coverage, PR title, Semgrep, Gitleaks |
    | `.github/workflows/agent-triage.yml` | Triage issues on open/edit/comment, sweep every 6 hours |
-   | `.github/workflows/agent-implement.yml` | Build agent; runs when triage dispatches it or when `agent:implement` is added |
+   | `.github/workflows/agent-implement.yml` | Optional build agent on GitHub Actions; runs when `agent:implement` is added, or after triage when the repository variable `AGENT_AUTO_BUILD` is `true`. By default you build in Claude Code with `/pipeline:build N` |
    | `.github/workflows/agent-review.yml` | Review PRs labeled `agent` (named `Agent Review`) |
-   | `.github/workflows/agent-merge-gate.yml` | Runs after `CI`/`Agent Review`: merge, send for a fix, or block |
+   | `.github/workflows/agent-merge-gate.yml` | Runs after `CI`/`Agent Review`: merge, ask for a fix (`/pipeline:build pr P`, or the Actions build agent with `AGENT_AUTO_BUILD=true`), or block |
    | `.github/workflows/release.yml` | release-please on push to `main` |
    | `.github/workflows/agent-usage-report.yml` | Weekly Actions minutes + Claude cost report |
    | `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` | Structured issue templates, blank issues disabled |
@@ -268,6 +268,10 @@ If you need a runtime setup step (setup-node/python/go), put it in `setup-comman
 `ubuntu-latest` runner already has common versions of Node, Python, Go and Java.
 
 ### 3.2 `agent-implement.yml` and the `fix` job in `agent-merge-gate.yml`
+
+These only run when builds happen on GitHub Actions (the `agent:implement` label, or
+`AGENT_AUTO_BUILD=true`, see §3.4). Builds you start with `/pipeline:build` use your own
+Claude Code session and the commands in `CLAUDE.md` instead.
 
 | Input | Meaning |
 |---|---|
@@ -340,10 +344,16 @@ bash -c '<your coverage-command>' 2>/dev/null | tail -1   # e.g. 84.61
 
 ### 3.4 Other common tweaks
 
+- **Where builds run.** By default nothing builds on its own: triage comments
+  `/pipeline:build N` on ready issues and the merge gate comments `/pipeline:build pr P` on
+  red agent PRs, and you run them in Claude Code (your machine or the web). To build on
+  GitHub Actions automatically instead, set the repository variable
+  `AGENT_AUTO_BUILD=true` (*Settings → Secrets and variables → Actions → Variables*, or
+  `gh variable set AGENT_AUTO_BUILD --body true`): triage then dispatches
+  `agent-implement.yml` and the merge gate runs the `fix` job. No file needs editing.
 - `agent-triage.yml`: `max-rounds` (clarification rounds, 1–5, default 5),
-  `auto-implement-max-size` (`XS|S|M|L`; larger issues wait for a person to add
-  `agent:implement`), remove `dispatch-on-ready` if you always want to decide which issues
-  get built.
+  `auto-implement-max-size` (`XS|S|M|L`, with `AGENT_AUTO_BUILD=true`; larger issues wait
+  for you).
 - `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` for your budget.
 - An integration branch other than `develop`: change `base-branch`, `baseline-branch` and
   `branches:` in every caller to match.
@@ -602,9 +612,11 @@ new version placed next to them as `<file>.upstream` — merge by hand, then del
 | You want to | Do |
 |---|---|
 | Give the agent work | Open an issue from a template; triage decides |
-| Build a size-L issue or one marked `needs-human` | Clarify the issue, remove `needs-human`, add **`agent:implement`** |
+| Build a ready issue | In Claude Code on the project (your machine or the web): `/pipeline:build N`, or "build issue N". Confirm the push when asked |
+| Fix a red agent PR | `/pipeline:build pr P` (the merge gate comments it on the PR) |
+| Build a size-L issue or one marked `needs-human` | Clarify the issue, remove `needs-human`, then `/pipeline:build N` (or add **`agent:implement`** to build on Actions) |
 | Re-triage an issue | Add the `needs-triage` label or *Actions → Agent Triage → Run workflow* |
-| Change the requirements | Edit the issue body (the issue is the source of truth, not comments). Issues in `needs-triage` / `awaiting-clarification` / `ready-for-plan` are re-triaged automatically, and the round count restarts at 0 if the previous triage had concluded. An open agent PR for the issue gets `needs-human` → close the PR, delete the branch, add `agent:implement` once the issue is `ready-for-plan` again |
+| Change the requirements | Edit the issue body (the issue is the source of truth, not comments). Issues in `needs-triage` / `awaiting-clarification` / `ready-for-plan` are re-triaged automatically, and the round count restarts at 0 if the previous triage had concluded. An open agent PR for the issue gets `needs-human` → close the PR, delete the branch, build it again (`/pipeline:build N` or `agent:implement`) once the issue is `ready-for-plan` again |
 | Cancel, stop the work | Close the issue. Triage and build skip it; a running build does not push or open a PR; an open PR is not fixed, and the merge gate adds `needs-human` instead of merging. Close the PR too if there is one |
 | Block an agent PR | Add `do-not-merge` (or `risk:high`) |
 | Have the agent review a human PR | Add the `agent` label to the PR (the PR becomes eligible for auto-merge!) |
@@ -622,9 +634,9 @@ new version placed next to them as `<file>.upstream` — merge by hand, then del
 | Claude authentication error / `401` | Missing or wrong `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, expired OAuth token | Regenerate (`claude setup-token`), reset the secret |
 | The agent PR has no CI checks (no App) | Expected: CI is dispatched separately, see the Actions tab | Use an App so checks show on the PR |
 | CI says `coverage-command must print the percentage on its last line` | The last stdout line of `coverage-command` has no number | Send other output to `>&2` (§3.3) |
-| The agent tries a denied command (`permission denied` / tool not allowed in the transcript) | Command missing from `extra-allowed-tools` | Add it to both `agent-implement.yml` and the `fix` job |
+| The agent tries a denied command (`permission denied` / tool not allowed in the transcript) | Command missing from `extra-allowed-tools` | Add it to both `agent-implement.yml` and the `fix` job (Actions builds only) |
 | A merged issue stays open | The merge gate did not reach the close step; the PR lacks `Closes #N` | Check the merge gate log; close it by hand |
-| PR gets `needs-human` after 3 fixes | Circuit breaker | Read the `transcript-fix-*` transcript, fix by hand or clarify the issue and add `agent:implement` again |
+| PR gets `needs-human` after 3 fixes | Circuit breaker | Read the `transcript-fix-*` transcript, fix by hand, run `/pipeline:build pr P`, or clarify the issue and build it again |
 | Triage does not respond to your answers | Bot comments are ignored; the issue is no longer `awaiting-clarification` | Comment from a human account; add `needs-triage` again |
 
 Still unclear: open the failed run → check the Step Summary and download the

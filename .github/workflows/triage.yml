@@ -43,7 +43,8 @@ on:
         description: >-
           Workflow file (e.g. agent-implement.yml, needs a workflow_dispatch input `issue`)
           to dispatch when an issue becomes ready. Labels added with GITHUB_TOKEN do not
-          trigger `issues: labeled`, workflow_dispatch does. Empty = don't auto-implement.
+          trigger `issues: labeled`, workflow_dispatch does. Empty (default) = a person builds
+          the issue in Claude Code with `/pipeline:build <issue>`.
         type: string
         default: ""
       auto-implement-max-size:
@@ -166,6 +167,7 @@ jobs:
           OUT: ${{ steps.claude.outputs.structured_output }}
           ROUNDS: ${{ steps.pre.outputs.rounds }}
           MAX_ROUNDS: ${{ steps.pre.outputs.max_rounds }}
+          AUTO_BUILD: ${{ inputs.dispatch-on-ready != '' }}
         run: |
           set -euo pipefail
           if [[ -z "$OUT" ]] || ! jq -e .decision <<<"$OUT" >/dev/null; then
@@ -217,6 +219,12 @@ jobs:
                 echo "**Acceptance criteria**"
                 jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
                 echo
+                if [[ "$AUTO_BUILD" == true ]]; then
+                  echo "**Next:** the build agent starts on GitHub Actions when risk and size allow; otherwise build it in Claude Code with \`/pipeline:build $ISSUE\`, or add \`agent:implement\`."
+                else
+                  echo "**Next:** build it in Claude Code, on your machine or on the web: \`/pipeline:build $ISSUE\` (or add \`agent:implement\` to build it on GitHub Actions)."
+                fi
+                echo
                 echo "_To change the requirements, edit the issue (triage re-runs); to cancel, close it._"
               } >"$body" ;;
             needs-human)
@@ -257,7 +265,7 @@ jobs:
             gh api -X POST "repos/$R/issues/$pr/comments" -F body=@- >/dev/null <<EOF
           🛑 The requirements in #$ISSUE changed after this PR was built (re-triage → \`$DECISION\`). Labelled \`needs-human\`, so it will not be auto-fixed or merged.
 
-          - To rebuild from the new requirements: close this PR and delete its branch, then (once #$ISSUE is \`ready-for-plan\`) add \`agent:implement\` to it.
+          - To rebuild from the new requirements: close this PR and delete its branch, then (once #$ISSUE is \`ready-for-plan\`) run \`/pipeline:build $ISSUE\` in Claude Code or add \`agent:implement\`.
           - To keep it: update it by hand and remove \`needs-human\`.
           EOF
             echo "Flagged stale PR #$pr" >>"$GITHUB_STEP_SUMMARY"
@@ -305,12 +313,12 @@ jobs:
           order=(XS S M L XL)
           idx() { local i; for i in "${!order[@]}"; do [[ "${order[$i]}" == "$1" ]] && echo "$i" && return; done; echo 99; }
           if [[ "$RISK" == high || $(idx "$SIZE") -gt $(idx "$MAX_SIZE") ]]; then
-            echo "Not auto-implementing (risk=$RISK, size=$SIZE > $MAX_SIZE); a human can add label agent:implement."
+            echo "Not auto-implementing (risk=$RISK, size=$SIZE > $MAX_SIZE); build it with /pipeline:build $ISSUE or the agent:implement label."
             exit 0
           fi
           assoc=$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE" --jq .author_association)
           if [[ "$TRUSTED_ONLY" == true && ! " OWNER MEMBER COLLABORATOR " == *" $assoc "* ]]; then
-            echo "Not auto-implementing: author is $assoc, not a collaborator; a human can add label agent:implement."
+            echo "Not auto-implementing: author is $assoc, not a collaborator; build it with /pipeline:build $ISSUE or the agent:implement label."
             exit 0
           fi
           gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" -f issue="$ISSUE"

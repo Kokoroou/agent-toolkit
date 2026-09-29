@@ -10,18 +10,23 @@
 #                                              <file>.age → <file>, key from $AGE_SECRET_KEY or the key file
 #   scripts/agent-session.sh pull              PULL_REMOTE → .agent-local/in/ (rclone)
 #   scripts/agent-session.sh run [--no-pull] [-- <claude args>]
-#                                              decrypt + pull, run Claude in a strict sandbox, then offer `save`
+#                                              decrypt + pull, run Claude in a strict sandbox, then offer
+#                                              `publish` and `save`
+#   scripts/agent-session.sh publish [--yes] [--trust-changes]
+#                                              push the branch /pipeline:build left in .agent-local/pr.md
+#                                              and open (or comment on) its PR
 #   scripts/agent-session.sh save [--yes] [--trust-changes]
 #                                              .agent-local/out/ → PUSH_REMOTE/<stamp>/ after checks
 #   scripts/agent-session.sh settings          print the sandbox settings `run` passes to Claude
 #
 # Storage (rclone) and age credentials are only used by this script, outside Claude: `run`
 # strips them from Claude's environment, denies reading them, and its sandbox cannot reach
-# any host outside the allowlist, storage hosts included. Only a person runs `save`.
+# any host outside the allowlist, storage hosts included. Only a person runs `publish` and
+# `save`.
 # Guide: https://github.com/kokoroou/agent-toolkit/blob/main/docs/AGENT-SESSION.md
 set -euo pipefail
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 die() { echo "agent-session: $*" >&2; exit 1; }
 note() { echo "agent-session: $*" >&2; }
 
@@ -328,6 +333,90 @@ $odd"
   echo "Saved to $dest"
 }
 
+# ── publish: the push and PR the sandbox does not allow, done by a person ─────────
+# /pipeline:build writes pr_file when `git push` is blocked: KEY: value header lines, a
+# `---` line, then the PR body (issue mode) or a fix summary for a PR comment (PR mode).
+pr_file=.agent-local/pr.md
+trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+
+cmd_publish() {
+  assume_yes=false trust_changes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --yes|-y) assume_yes=true ;; --trust-changes) trust_changes=true ;; *) usage 1 ;; esac; shift
+  done
+  need gh "https://cli.github.com"
+  [[ -f "$pr_file" ]] || die "$pr_file not found (/pipeline:build writes it when the sandbox blocks the push)"
+  check_trusted
+  local issue="" pr="" base="" title="" extra="" line k v in_body=false body branch l labels=(agent)
+  mkdir -p "$state_dir"; body="$state_dir/pr-body.md"; : >"$body"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    if [[ "$in_body" == true ]]; then printf '%s\n' "$line" >>"$body"; continue; fi
+    [[ "$line" == --- ]] && { in_body=true; continue; }
+    [[ "$line" == *:* ]] || continue
+    k=$(trim "${line%%:*}") v=$(trim "${line#*:}")
+    case "$k" in
+      issue) issue="${v%%[[:space:]]*}" ;;
+      pr) pr="${v%%[[:space:]]*}" ;;
+      base) base="${v%%[[:space:]]*}" ;;
+      title) title="$v" ;;
+      labels) extra="${v%%#*}" ;;
+    esac
+  done <"$pr_file"
+  [[ -z "$issue" || "$issue" =~ ^[0-9]+$ ]] || die "$pr_file: issue must be a number"
+  [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || die "$pr_file: pr must be a number"
+  [[ -n "$issue$pr" ]] || die "$pr_file: needs an 'issue:' or a 'pr:' line"
+  if [[ -z "$base" ]]; then
+    if git rev-parse -q --verify refs/remotes/origin/develop >/dev/null; then base=develop
+    else base=$(git symbolic-ref --short -q refs/remotes/origin/HEAD || echo origin/main); base="${base#origin/}"; fi
+  fi
+  git check-ref-format --branch "$base" >/dev/null 2>&1 || die "$pr_file: bad base branch '$base'"
+  for l in $extra; do # only labels that hold a PR back; never ones that would widen what merges
+    case "$l" in needs-human|risk:high) labels+=("$l") ;; *) note "ignored label '$l'" ;; esac
+  done
+
+  branch=$(git symbolic-ref --short -q HEAD) || die "not on a branch"
+  case "$branch" in "$base"|main|master|develop) die "refusing to publish from '$branch'" ;; esac
+  [[ -z "$(git status --porcelain)" ]] || die "uncommitted changes: commit or discard them first"
+  git fetch -q origin "$base" || die "cannot fetch origin/$base"
+  local commits workflows
+  commits=$(git log --oneline "origin/$base..HEAD")
+  [[ -n "$commits" ]] || die "$branch has no commits on top of origin/$base"
+  workflows=$(git diff --name-only "origin/$base...HEAD" -- .github/workflows)
+
+  echo "Branch:  $branch → $base"
+  echo "Commits:"; printf '%s\n' "$commits" | sed 's/^/  /'
+  git --no-pager diff --stat "origin/$base...HEAD" | tail -n 25
+  if [[ -n "$issue" ]]; then
+    [[ -n "$title" ]] || die "$pr_file: needs a 'title:' line"
+    grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #$issue\\b" "$body" || printf '\nCloses #%s\n' "$issue" >>"$body"
+    echo "PR:      $title  [${labels[*]}]  (Closes #$issue)"
+  else
+    echo "PR:      #$pr (push; the summary below $pr_file's '---' becomes a comment)"
+  fi
+  if [[ -n "$workflows" ]]; then
+    echo "WARNING: changes CI workflows — review them before pushing:"; printf '%s\n' "$workflows" | sed 's/^/  /'
+  fi
+  confirm "Push $branch${issue:+ and open the PR}?" || { note "not published"; return 1; }
+
+  # --no-verify: hooks come from the checkout the agent wrote to; they must not run here.
+  git push --no-verify -u origin "$branch"
+  if [[ -n "$pr" ]]; then
+    if [[ -s "$body" ]]; then gh pr comment "$pr" --body-file "$body" >/dev/null; fi
+    echo "Pushed to PR #$pr"
+  elif l=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty') && [[ -n "$l" ]]; then
+    echo "Pushed; PR already open: $l"
+  else
+    local args=()
+    for l in "${labels[@]}"; do
+      gh label create "$l" --color "$( [[ "$l" == agent ]] && echo 0e8a16 || echo d93f0b )" >/dev/null 2>&1 || true
+      args+=(--label "$l")
+    done
+    gh pr create --base "$base" --head "$branch" --title "$title" --body-file "$body" "${args[@]}"
+  fi
+  rm -f "$pr_file" "$body"
+}
+
 # ── sandboxed Claude ─────────────────────────────────────────────────────────────
 secret_env_names() { compgen -e | grep -E '^(AGE_|RCLONE_|AGENT_SESSION_|B2_APPLICATION_KEY)' || true; }
 
@@ -409,6 +498,10 @@ cmd_run() {
   echo "Starting Claude in the sandbox (settings: $state_dir/settings.json)."
   echo "Write untracked outputs to $OUT_DIR/; 'save' uploads them after the session."
   env ${unset_args[@]+"${unset_args[@]}"} claude --settings "$state_dir/settings.json" "$@" || rc=$?
+  if [[ -f "$pr_file" ]]; then
+    echo; echo "/pipeline:build left $pr_file."
+    ( cmd_publish ) || true
+  fi
   if [[ -n "$PUSH_REMOTE" && -d "$OUT_DIR" && -n "$(find "$OUT_DIR" -type f -print -quit)" ]]; then
     echo; confirm "Save $OUT_DIR to $PUSH_REMOTE now?" && cmd_save
   fi
@@ -424,6 +517,7 @@ case "$sub" in
   decrypt) cmd_decrypt "$@" ;;
   pull) cmd_pull ;;
   save) cmd_save "$@" ;;
+  publish) cmd_publish "$@" ;;
   run) cmd_run "$@" ;;
   settings) settings_json ;;
   -h|--help|help) usage 0 ;;

@@ -39,18 +39,23 @@ Mục lục:
 ## 1. Pipeline làm gì
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
 ```
 
 - Bạn mở issue theo template (Goal / Constraints / Acceptance criteria).
 - **Triage** đọc issue, hỏi lại tối đa 5 vòng nếu thiếu thông tin hoặc chưa rõ ý định, rồi gắn nhãn
   `type:*`, `priority:*`, `risk:*`, `size:*`.
-- Issue đủ ý, `risk` khác `high` và `size` ≤ M → **build agent** tạo branch
-  `agent/issue-N`, lập kế hoạch, viết code + test, mở PR vào `develop`.
+- Issue đủ ý được gắn `ready-for-plan` kèm comment hướng dẫn bước tiếp. Bạn khởi động
+  **build agent** khi muốn: `/pipeline:build N` trong Claude Code trên máy hoặc trên web.
+  Nó tạo branch `agent/issue-N`, lập kế hoạch, viết code + test và, sau khi bạn xác nhận,
+  mở PR vào `develop`. (Tuỳ chọn: đặt biến repo `AGENT_AUTO_BUILD=true` để issue có `risk`
+  khác `high` và `size` ≤ M tự build trên GitHub Actions, hoặc gắn nhãn `agent:implement`
+  cho từng issue.)
 - **CI** (lint, format, test, coverage không giảm, Semgrep, Gitleaks) và **reviewer
   agent** chạy trên PR.
-- **Merge gate** squash-merge PR xanh vào `develop`; PR đỏ được gửi lại build agent
-  sửa (tối đa 3 lần), sau đó dừng với nhãn `needs-human`.
+- **Merge gate** squash-merge PR xanh vào `develop`; PR đỏ được comment lệnh
+  `/pipeline:build pr P` để bạn chạy (với `AGENT_AUTO_BUILD=true` thì PR được gửi lại build
+  agent trên Actions, tối đa 3 lần, sau đó dừng với `needs-human`).
 - Bạn tự merge `develop` → `main`; release-please tạo version, CHANGELOG và GitHub Release.
 
 Repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit (`uses: kokoroou/agent-toolkit/...@v0`),
@@ -200,10 +205,12 @@ Trong Claude Code, đứng ở thư mục repo dự án (cần `gh auth login` �
 
 | Lệnh | Làm gì |
 |---|---|
+| `/pipeline:build 42` | **Thi công issue #42 từ đầu đến cuối**: branch, kế hoạch, code, kiểm tra, rồi (sau khi bạn xác nhận) push + PR có `Closes #42` và nhãn `agent`. Hoặc chỉ cần nói "thi công issue 42" |
+| `/pipeline:build pr 57` | Sửa PR agent #57 theo log CI đỏ / review, rồi push |
 | `/pipeline:triage-issue 42` | Chấm điểm, phân loại issue #42, đề xuất câu hỏi làm rõ |
 | `/pipeline:plan-feature 42` | Lập kế hoạch theo file cho issue #42, không sửa code |
-| `/pipeline:implement-issue 42` | Planner → implementer trên branch hiện tại, commit (không push) |
-| `/pipeline:fix-pr 57 <file-log>` | Sửa PR #57 theo log CI / review, commit (không push) |
+| `/pipeline:implement-issue 42` | Planner → implementer trên branch hiện tại, commit (không push; workflow Actions dùng) |
+| `/pipeline:fix-pr 57 <file-log>` | Sửa PR #57 theo log CI / review, commit (không push; workflow Actions dùng) |
 | `/pipeline:review-pr 57` | Review PR #57, trả về verdict |
 
 Cập nhật plugin: `claude plugin marketplace update agent-toolkit`.
@@ -256,9 +263,9 @@ Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.vi.md) với repo này (te
 | Không trả lời đủ | Trả lời lạc đề 5 lần | Nhãn `needs-human`, pipeline dừng |
 | Đổi yêu cầu | Sửa nội dung issue đã `ready-for-plan` | Triage chạy lại, đếm vòng hỏi từ 0; PR agent cũ (nếu có) bị gắn `needs-human` |
 | Huỷ | Đóng issue | Build đang chạy không push/mở PR; PR đã mở không được fix hay merge |
-| Issue đủ ý, size S | "slugify bỏ dấu tiếng Việt", kèm 2–3 acceptance criteria cụ thể | `ready-for-plan` → PR `agent/issue-N` có `Closes #N` |
+| Issue đủ ý, size S | "slugify bỏ dấu tiếng Việt", kèm 2–3 acceptance criteria cụ thể, rồi `/pipeline:build N` trong Claude Code | `ready-for-plan` → PR `agent/issue-N` có `Closes #N` |
 | PR xanh + review approve | Chờ CI và *Agent Review* xong | Merge gate squash vào `develop`, xoá branch, đóng issue |
-| PR đỏ | Đẩy thêm một commit làm hỏng test lên branch agent | Merge gate → `fix` → agent commit sửa; sau 3 lần → `needs-human` |
+| PR đỏ | Đẩy thêm một commit làm hỏng test lên branch agent | Merge gate comment `/pipeline:build pr P`; chạy lệnh đó → bản sửa được push. Với `AGENT_AUTO_BUILD=true`: `fix` → agent commit sửa; sau 3 lần → `needs-human` |
 | PR rủi ro cao | Gắn nhãn `risk:high` vào PR agent | Merge gate trả `blocked`, không merge |
 | Smoke fail sau merge | Đặt `smoke-command: "false"` trong `agent-merge-gate.yml` | Sau merge có PR `revert/pr-N` mang `needs-human` |
 | Release | Mở PR `develop` → `main` và merge | release-please mở release PR; merge nó → tag + GitHub Release |

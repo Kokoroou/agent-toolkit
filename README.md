@@ -3,18 +3,24 @@
 **English** · [Tiếng Việt](README.vi.md)
 
 **Let Claude Code handle your GitHub issues end to end: ask clarifying questions, write
-code + tests, open a PR, review and merge it — you just open issues and approve releases.**
+code + tests, open a PR, review and merge it — you open issues, say when to build, and
+approve releases.**
 
 - Runs on **GitHub Free**, private repos included, using GitHub Actions.
+- You decide when an issue is built: triage marks it ready, then you say
+  `/pipeline:build 42` in Claude Code on your machine or on the web, where the agent has
+  your full harness (tools, hooks, sandbox). Building on GitHub Actions is one repository
+  variable away (`AGENT_AUTO_BUILD=true`).
 - Shared by every project: a project repo only keeps a few thin YAML files that call into
   this toolkit, so upgrading one place updates every project.
-- Safe by default: agents never hold a write token, high-risk work is never auto-merged,
+- Safe by default: agents on GitHub Actions never hold a write token, pushes from your own
+  sessions wait for your OK, high-risk work is never auto-merged,
   and every failure stops and waits for a person (the `needs-human` label).
 
 ```
-issue ─▶ triage ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
-            │                                          │                 │
-            └─ asks back ≤5 rounds                     └─ fix ≤3 times ──┴─ fail → needs-human / revert
+issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
+            │                                                                │                │
+            └─ asks back ≤5 rounds                                           └─ fix ──────────┴─ fail → needs-human / revert
 ```
 
 ## Get started in 3 steps
@@ -86,9 +92,13 @@ claude plugin install pipeline@agent-toolkit
 
 Command list: [GETTING-STARTED §7](docs/GETTING-STARTED.md#7-use-the-plugin-by-hand-optional).
 
-To build issues this way on your machine or in Claude cloud, with `.env` encrypted in the
-repo, untracked files on B2/Google Drive, and a sandbox that keeps the agent away from the
-storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSION.md).
+**Building an issue** (the default way): in a Claude Code session on the project — on
+your machine or on the web — run `/pipeline:build 42`, or just ask Claude to build issue
+42. It branches, plans, implements, runs the checks, then pushes and opens the `agent` PR
+that review and the merge gate pick up. `/pipeline:build pr 57` fixes a PR whose checks
+failed. For `.env` encrypted in the repo, untracked files on B2/Google Drive and a sandbox
+that keeps the agent away from the storage: `scripts/agent-session.sh run` →
+[AGENT-SESSION.md](docs/AGENT-SESSION.md).
 
 ## What's in this repo
 
@@ -97,7 +107,7 @@ storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSIO
 
 | Path | What it is |
 |---|---|
-| [`plugins/pipeline/`](plugins/pipeline) | Claude Code plugin: sub-agents `planner` / `implementer` / `reviewer`, commands `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skill `pipeline-conventions` |
+| [`plugins/pipeline/`](plugins/pipeline) | Claude Code plugin: sub-agents `planner` / `implementer` / `reviewer`, commands `/triage-issue` `/plan-feature` `/implement-issue` `/fix-pr` `/review-pr`, skills `build` (interactive build / fix) and `pipeline-conventions` |
 | [`.github/workflows/triage.yml`](.github/workflows/triage.yml) | Clarify, score and label issues; add them to GitHub Projects |
 | [`.github/workflows/implement.yml`](.github/workflows/implement.yml) | Build agent: branch `agent/issue-N`, commit, PR; fix mode + circuit breaker |
 | [`.github/workflows/review.yml`](.github/workflows/review.yml) | Review PRs, inline comments, commit status `agent/review` |

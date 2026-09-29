@@ -10,6 +10,7 @@
       "Bash(scripts/agent-session.sh cloud-key:*)",
       "Bash(scripts/agent-session.sh save:*)",
       "Bash(scripts/agent-session.sh pull:*)",
+      "Bash(scripts/agent-session.sh publish:*)",
       "Read(~/.config/rclone/**)",
       "Read(~/.config/agent-session/**)",
       "Edit(/.agent-session.conf)",
