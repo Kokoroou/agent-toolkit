@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.3.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.2.0...v0.3.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* builds and fixes no longer start on GitHub Actions on their own. Set the repository variable AGENT_AUTO_BUILD=true (the updated caller templates read it) to restore automatic builds after triage and automatic fixes from the merge gate; callers of merge-gate.yml that keep their own fix job need `auto-fix: true`. The `agent:implement` label still builds on Actions.
+
+### Features
+
+* **agent-session:** sandboxed local/cloud sessions with encrypted env and rclone storage ([30b8c69](https://github.com/Kokoroou/agent-toolkit/commit/30b8c6916ea1ff89530caebec7bdd861e42c9cbc))
+* **agent-session:** sandboxed local/cloud sessions with encrypted env and rclone storage ([bf285b9](https://github.com/Kokoroou/agent-toolkit/commit/bf285b9c979d712116a560e0c1280e3b73e357f0))
+* build issues on demand in Claude Code by default ([e9feba9](https://github.com/Kokoroou/agent-toolkit/commit/e9feba975f7204cd957183eacd8fd72ee8113195))
+* **install:** ask whether to skip or overwrite existing project files ([4bc0afa](https://github.com/Kokoroou/agent-toolkit/commit/4bc0afa5748c3a4e099954b6cf38ac3d26f8fefc))
+* **install:** ask whether to skip or overwrite existing project files ([53c3b6e](https://github.com/Kokoroou/agent-toolkit/commit/53c3b6e0880500a1da92d8ac3241198ea65d5e56))
+* **pipeline:** /pipeline:build without arguments proposes a build queue ([25231bc](https://github.com/Kokoroou/agent-toolkit/commit/25231bc8fedb9f73b19185eb666b6eb69aaf8ade))
+
+
+### Bug Fixes
+
+* **install:** stop early when not on the default branch ([30c7974](https://github.com/Kokoroou/agent-toolkit/commit/30c79743e6a5a2b220c963e7e894dcfd01273451))
+* **pipeline:** use $ARGUMENTS in commands so args resolve on current Claude Code ([f7b4835](https://github.com/Kokoroou/agent-toolkit/commit/f7b483583a15a577ca1f32d5ec689dbc3191207d))
+* **release:** merge duplicate changelog entries into one line ([df33ac8](https://github.com/Kokoroou/agent-toolkit/commit/df33ac865335b95f1b15075d5dfe97adc9d00066))
+
 ## [0.2.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.1.0...v0.2.0) (2026-09-28)
 
 
