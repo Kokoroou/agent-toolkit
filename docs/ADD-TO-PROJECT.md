@@ -262,9 +262,11 @@ blocks.
 | | `test` | `vitest` → `vitest`; `jest` → `jest`; else a real `scripts.test` → `script` (`npm test`); else `none` |
 | | `coverage` | `yes` for Jest, or Vitest with `@vitest/coverage-v8`/`-istanbul`; else `no` (tests run via `test-command`, no coverage gate) |
 | | `build`, `tsc` | `scripts.build`; `typescript` (adds `npx tsc` to the agent's allowed tools) |
+| | `smoke` | `yes` if a test file has `smoke` in its path (`*smoke*.test.*` / `.spec.*`): `smoke-command` = build + that test; else `no`: the build only (empty without a build script) |
 | python | `lint` | `ruff` (in `pyproject.toml`/`requirements*.txt`/`setup.cfg`/`tox.ini`, or `ruff.toml`) → `ruff`; `flake8` / `.flake8` → `flake8`; else `none` |
 | | `format` | `black` → `black`; else `ruff` if ruff lints; else `none` |
 | | `test`, `coverage` | `pytest` / `pytest.ini` / `conftest.py` → `pytest`; `pytest-cov` → coverage `yes` |
+| | `smoke` | `yes` if a test uses `@pytest.mark.smoke`: `smoke-command: pytest -m smoke`; else `no`: empty |
 | go | — | fixed: `go vet`, `gofmt`, `go test -cover` |
 | none | — | every command empty |
 
@@ -308,7 +310,7 @@ In the `gate` job of `agent-merge-gate.yml`:
 
 | Input | Meaning |
 |---|---|
-| `smoke-command` | Runs on `develop` right after a merge; failure → automatic revert PR. Empty = skip |
+| `smoke-command` | Runs on `develop` right after a merge; failure → automatic revert PR. Empty = skip. Bootstrap only runs a smoke test the project has (`smoke` key, §3); a filter that matches no test fails and reverts every merge |
 | `required-statuses` | Default `agent/review` (the status written by the reviewer) |
 | `required-checks` / `ignore-checks` | Check runs that are required / ignored |
 | `block-labels` | Default `needs-human,risk:high,do-not-merge,wip` |
@@ -366,7 +368,7 @@ coverage-command: >-
   npx vitest run --coverage --coverage.reporter=json-summary >&2 &&
   node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
 # gate job
-smoke-command: npm run build && npx vitest run smoke
+smoke-command: npm run build && npx vitest run smoke   # with a *smoke*.test.* file; else npm run build
 ```
 
 Check `coverage-command` locally before committing — the last line must be a number:

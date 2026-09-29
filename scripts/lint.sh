@@ -42,7 +42,8 @@ printf '{\n  "scripts": {\n    "lint": "eslint .",\n    "test": "vitest run"\n  
 scripts/bootstrap.sh "$t" --no-labels >/dev/null
 expect .github/workflows/ci.yml '      lint-command: npm run lint' '      format-check-command: ""' \
   '      test-command: npx vitest run' '      coverage-command: ""'
-expect .github/agent-toolkit.lock 'tools=lint=script,format=none,test=vitest,coverage=no,build=no,tsc=no'
+expect .github/agent-toolkit.lock 'tools=lint=script,format=none,test=vitest,coverage=no,build=no,tsc=no,smoke=no'
+expect .github/workflows/agent-merge-gate.yml '      smoke-command: ""' # no smoke test, no build
 if grep -rqiE 'jest|prettier' "$t/.github/workflows" "$t/CLAUDE.md"; then
   grep -rniE 'jest|prettier' "$t/.github/workflows" "$t/CLAUDE.md"; echo "Vitest project got Jest/Prettier commands"; exit 1
 fi
@@ -51,8 +52,8 @@ for f in "$w"/*.yml; do
   sed 's#kokoroou/agent-toolkit/\(\.github/workflows/[a-z-]*\.yml\)@[A-Za-z0-9._-]*#./\1#' "$f" >"$w/caller-$(basename "$f")" && rm "$f"
 done
 cp .github/workflows/*.yml "$w/" && (cd "$t" && actionlint)
-# pnpm + Jest + Prettier + ESLint, with a coverage provider and a build script.
-fresh && touch "$t/pnpm-lock.yaml"
+# pnpm + Jest + Prettier + ESLint, with a coverage provider, a build script and a smoke test.
+fresh && touch "$t/pnpm-lock.yaml" && mkdir "$t/test" && touch "$t/test/smoke.test.js"
 printf '{\n  "scripts": { "build": "tsc" },\n  "devDependencies": {\n    "eslint": "^9.0.0",\n    "jest": "^30.0.0",\n    "prettier": "^3.0.0"\n  }\n}\n' >"$t/package.json"
 scripts/bootstrap.sh "$t" --no-labels >/dev/null
 expect .github/workflows/ci.yml '      lint-command: pnpm exec eslint .' '      format-check-command: pnpm exec prettier --check .' \
@@ -62,10 +63,15 @@ expect .github/workflows/agent-merge-gate.yml '      smoke-command: pnpm run bui
 fresh && printf '[project]\nname = "x"\n[project.optional-dependencies]\ndev = ["black", "flake8", "pytest", "pytest-cov"]\n' >"$t/pyproject.toml"
 scripts/bootstrap.sh "$t" --no-labels >/dev/null
 expect .github/workflows/ci.yml '      lint-command: flake8 .' '      format-check-command: black --check .' '      test-command: ""'
+expect .github/workflows/agent-merge-gate.yml '      smoke-command: ""' # no @pytest.mark.smoke test
 if grep -q ruff "$t/.github/workflows/ci.yml"; then echo "flake8/black project got ruff commands"; exit 1; fi
 # --tools overrides a key; unknown keys and values are refused.
-[[ "$(scripts/bootstrap.sh "$t" --detect-tools --tools lint=none)" == lint=none,format=black,test=pytest,coverage=yes ]]
+[[ "$(scripts/bootstrap.sh "$t" --detect-tools --tools lint=none)" == lint=none,format=black,test=pytest,coverage=yes,smoke=no ]]
 if scripts/bootstrap.sh "$t" --detect-tools --tools test=jest 2>/dev/null; then echo "--tools accepted jest for python"; exit 1; fi
+# npm with a build script but no smoke test: the post-merge check only builds.
+fresh && printf '{\n  "scripts": {\n    "build": "vite build",\n    "test": "vitest run"\n  },\n  "devDependencies": {\n    "vitest": "^5.0.0"\n  }\n}\n' >"$t/package.json"
+scripts/bootstrap.sh "$t" --no-labels >/dev/null
+expect .github/workflows/agent-merge-gate.yml '      smoke-command: npm run build'
 
 echo "== upgrade.sh: 3-way merge between two toolkit commits"
 gitc() { git -C "$1" -c user.name=lint -c user.email=lint@localhost "${@:2}"; }
@@ -76,7 +82,7 @@ cp -R scripts templates version.txt CHANGELOG.md "$tk/"
 gitc "$tk" add -A && gitc "$tk" commit -qm A
 "$tk/scripts/bootstrap.sh" "$p" --ref v9 --stack python --no-labels >/dev/null
 grep -qx 'stack=python' "$p/.github/agent-toolkit.lock"
-grep -qx 'tools=lint=ruff,format=ruff,test=pytest,coverage=yes' "$p/.github/agent-toolkit.lock"
+grep -qx 'tools=lint=ruff,format=ruff,test=pytest,coverage=yes,smoke=no' "$p/.github/agent-toolkit.lock"
 if grep -qx 'managed=CLAUDE.md' "$p/.github/agent-toolkit.lock"; then echo "CLAUDE.md must stay project-owned"; exit 1; fi
 edit 's/max-turns: 80/max-turns: 50/' "$p/.github/workflows/agent-implement.yml"   # local only
 edit 's/coverage-tolerance: "0"/coverage-tolerance: "1"/' "$p/.github/workflows/ci.yml" # both → conflict
@@ -93,7 +99,7 @@ if ! { grep -q 'max-turns: 50' "$w/agent-implement.yml" && grep -q 'Issue to bui
   && grep -q 'implement.yml@v9.9.9' "$w/agent-implement.yml" && grep -q '^<<<<<<< yours' "$w/ci.yml" \
   && [[ -f "$p/.github/new-file.md" ]] && grep -qx 'ref=v9.9.9' "$p/.github/agent-toolkit.lock" \
   && grep -qx 'managed=.github/new-file.md' "$p/.github/agent-toolkit.lock" \
-  && grep -qx 'tools=lint=ruff,format=ruff,test=pytest,coverage=yes' "$p/.github/agent-toolkit.lock"; }; then
+  && grep -qx 'tools=lint=ruff,format=ruff,test=pytest,coverage=yes,smoke=no' "$p/.github/agent-toolkit.lock"; }; then
   cat "$tmp/upgrade.log"; git -C "$p" diff; echo "upgrade.sh: unexpected result"; exit 1
 fi
 

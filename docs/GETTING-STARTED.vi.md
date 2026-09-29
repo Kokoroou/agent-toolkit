@@ -248,10 +248,9 @@ npx prettier --write . && npm run lint && npm test   # cả ba phải xanh trư�
 git add -A && git commit -m "chore: initial sandbox" && git push -u origin HEAD
 ```
 
-Lệnh `smoke-command` mặc định trong template là
-`npm run build && npm test -- smoke` (mẫu đường dẫn dạng tham số vị trí — chạy được cả
-Jest 29 lẫn Jest 30, vốn đã bỏ `--testPathPattern`); với sandbox này hãy đổi thành
-`npm test` (hoặc thêm một file `test/smoke.test.js`).
+Ở đây bootstrap đặt `smoke-command` là `npm run build`: nó chỉ thêm smoke test
+(`npx jest smoke`, mẫu đường dẫn dạng tham số vị trí — chạy được cả Jest 29 lẫn 30) khi
+có file như `test/smoke.test.js`.
 
 Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.vi.md) với repo này (template mặc định
 đã là Node + Jest nên gần như không phải sửa lệnh).

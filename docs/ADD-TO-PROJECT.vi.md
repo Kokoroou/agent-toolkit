@@ -252,9 +252,11 @@ kiểm tra các khối `# ── edit for your stack ──`.
 | | `test` | `vitest` → `vitest`; `jest` → `jest`; nếu không, có `scripts.test` thật → `script` (`npm test`); nếu không → `none` |
 | | `coverage` | `yes` với Jest, hoặc Vitest có `@vitest/coverage-v8`/`-istanbul`; còn lại `no` (test chạy qua `test-command`, không gate coverage) |
 | | `build`, `tsc` | `scripts.build`; `typescript` (thêm `npx tsc` vào danh sách lệnh agent được chạy) |
+| | `smoke` | `yes` nếu có file test mà đường dẫn chứa `smoke` (`*smoke*.test.*` / `.spec.*`): `smoke-command` = build + test đó; nếu không → `no`: chỉ build (để trống nếu không có script build) |
 | python | `lint` | `ruff` (trong `pyproject.toml`/`requirements*.txt`/`setup.cfg`/`tox.ini`, hoặc có `ruff.toml`) → `ruff`; `flake8` / `.flake8` → `flake8`; nếu không → `none` |
 | | `format` | `black` → `black`; nếu không, `ruff` khi ruff đang lint; nếu không → `none` |
 | | `test`, `coverage` | `pytest` / `pytest.ini` / `conftest.py` → `pytest`; `pytest-cov` → coverage `yes` |
+| | `smoke` | `yes` nếu có test dùng `@pytest.mark.smoke`: `smoke-command: pytest -m smoke`; nếu không → `no`: để trống |
 | go | — | cố định: `go vet`, `gofmt`, `go test -cover` |
 | none | — | mọi lệnh để trống |
 
@@ -298,7 +300,7 @@ Trong job `gate` của `agent-merge-gate.yml`:
 
 | Input | Ý nghĩa |
 |---|---|
-| `smoke-command` | Chạy trên `develop` ngay sau merge; fail → PR revert tự động. Để trống = bỏ qua |
+| `smoke-command` | Chạy trên `develop` ngay sau merge; fail → PR revert tự động. Để trống = bỏ qua. Bootstrap chỉ chạy smoke test mà dự án có (khóa `smoke`, §3); bộ lọc không khớp test nào sẽ fail và revert mọi lần merge |
 | `required-statuses` | Mặc định `agent/review` (status do reviewer ghi) |
 | `required-checks` / `ignore-checks` | Tên check run bắt buộc / bỏ qua |
 | `block-labels` | Mặc định `needs-human,risk:high,do-not-merge,wip` |
@@ -356,7 +358,7 @@ coverage-command: >-
   npx vitest run --coverage --coverage.reporter=json-summary >&2 &&
   node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
 # gate job
-smoke-command: npm run build && npx vitest run smoke
+smoke-command: npm run build && npx vitest run smoke   # khi có file *smoke*.test.*; nếu không: npm run build
 ```
 
 Kiểm tra `coverage-command` trên máy trước khi commit — dòng cuối phải là một số:
