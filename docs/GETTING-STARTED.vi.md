@@ -201,6 +201,11 @@ claude plugin marketplace add kokoroou/agent-toolkit
 claude plugin install pipeline@agent-toolkit
 ```
 
+Lệnh này chỉ cài plugin trên máy bạn. Dự án được thiết lập bằng lệnh cài cũng bật plugin
+trong `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`), nên Claude
+Code đề nghị cài khi bạn mở dự án, và phiên cloud trên claude.ai/code tự nạp nó
+([AGENT-SESSION §5](AGENT-SESSION.vi.md#5-phiên-trên-claude-cloud)).
+
 Trong Claude Code, đứng ở thư mục repo dự án (cần `gh auth login` để lệnh đọc được issue/PR):
 
 | Lệnh | Làm gì |

@@ -231,9 +231,18 @@ agent can read. The design is:
      printed).
    - **Setup script**: `apt-get update && apt-get install -y age || true`.
    - **Network access**: see below.
-3. Start a session on the repo. The project's `.claude/settings.json` has a `SessionStart`
-   hook that runs `agent-session.sh decrypt --if-key`, so `.env` is there before the agent
-   starts. The same hook does nothing in CI or on a machine without a key.
+3. Start a session on the repo. The project's `.claude/settings.json` does two things
+   here:
+   - It declares the `agent-toolkit` marketplace (`extraKnownMarketplaces`) and enables
+     `pipeline@agent-toolkit` (`enabledPlugins`). The cloud VM starts fresh every session,
+     so a plugin you installed on your machine is not there; this is what makes
+     `/pipeline:build` available. The network level must reach `github.com` (Trusted
+     does). If `/pipeline:build` is missing, check these keys are in the committed
+     `.claude/settings.json` (projects installed before they existed: run
+     `scripts/upgrade.sh`) and start a new session.
+   - Its `SessionStart` hook runs `agent-session.sh decrypt --if-key`, so `.env` is there
+     before the agent starts. The same hook does nothing in CI or on a machine without a
+     key.
 4. Say `/pipeline:build 42` (or "build issue 42"). The session can push itself, so after
    you confirm it pushes and opens the `agent` PR directly. The cloud's GitHub proxy only
    lets it push to the session's own branch, so the PR comes from that branch rather than

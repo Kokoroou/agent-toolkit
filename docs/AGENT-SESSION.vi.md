@@ -230,9 +230,16 @@ là:
      ra).
    - **Setup script**: `apt-get update && apt-get install -y age || true`.
    - **Network access**: xem bên dưới.
-3. Mở phiên trên repo. `.claude/settings.json` của dự án có hook `SessionStart` chạy
-   `agent-session.sh decrypt --if-key`, nên `.env` có sẵn trước khi agent bắt đầu. Cùng hook
-   đó không làm gì trong CI hoặc trên máy không có key.
+3. Mở phiên trên repo. `.claude/settings.json` của dự án lo hai việc ở đây:
+   - Khai báo marketplace `agent-toolkit` (`extraKnownMarketplaces`) và bật
+     `pipeline@agent-toolkit` (`enabledPlugins`). VM cloud được tạo mới mỗi phiên, nên
+     plugin bạn cài trên máy không có ở đó; chính hai khoá này làm `/pipeline:build` dùng
+     được. Mức mạng phải tới được `github.com` (Trusted thì được). Nếu không thấy
+     `/pipeline:build`, kiểm tra hai khoá này đã có trong `.claude/settings.json` được
+     commit chưa (dự án cài trước khi có chúng: chạy `scripts/upgrade.sh`) rồi mở phiên
+     mới.
+   - Hook `SessionStart` chạy `agent-session.sh decrypt --if-key`, nên `.env` có sẵn trước
+     khi agent bắt đầu. Cùng hook đó không làm gì trong CI hoặc trên máy không có key.
 4. Gõ `/pipeline:build 42` (hoặc "thi công issue 42"). Phiên cloud tự push được, nên sau
    khi bạn xác nhận nó push và mở PR `agent` luôn. Proxy GitHub của cloud chỉ cho push lên
    branch của phiên, nên PR đi từ branch đó thay vì `agent/issue-42`; review và merge gate
