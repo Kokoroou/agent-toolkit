@@ -32,12 +32,13 @@
 #                           needs a classic PAT                     [PROJECT_TOKEN]
 #   --default-develop | --keep-default   make develop the default branch (recommended)
 #   --commit | --no-commit  commit + push the files                 (asked; --yes: commit)
-#   --skip-secrets, --skip-settings, --no-labels, --force (overwrite existing files)
+#   --skip-secrets, --skip-settings, --no-labels, --force (overwrite existing files;
+#                           without it you are asked, default: keep them)
 #   --toolkit-dir <dir>     use a local toolkit checkout instead of cloning
 #   -y, --yes               non-interactive
 set -euo pipefail
 
-usage() { sed -n '2,34p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,38p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 # ── helpers ─────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then b=$'\e[1m' g=$'\e[32m' y=$'\e[33m' r=$'\e[31m' n=$'\e[0m'; else b="" g="" y="" r="" n=""; fi
@@ -242,6 +243,22 @@ toolkit_dir=$(cd "$toolkit_dir" && pwd)
 if [[ "$stack" == auto && "$interactive" == true ]] && grep -q -- '--stack' "$toolkit_dir/scripts/bootstrap.sh"; then
   detected=$(bash "$toolkit_dir/scripts/bootstrap.sh" "$target" --detect-stack)
   ask stack "Stack (node|pnpm|yarn|python|go|none)" "$detected"
+fi
+
+# Files the project already has are kept (skipped) by default; ask once whether to
+# overwrite them instead.
+if [[ "$force" != true && "$interactive" == true ]]; then
+  existing_files=()
+  while IFS= read -r -d '' f; do
+    rel="${f#"$toolkit_dir/templates/"}"
+    [[ "$rel" == .github/labels.json ]] && continue
+    if [[ -e "$target/$rel" ]]; then existing_files+=("$rel"); fi
+  done < <(find "$toolkit_dir/templates" -type f -print0 | sort -z)
+  if [[ ${#existing_files[@]} -gt 0 ]]; then
+    echo "  These files already exist in the project:"
+    printf '    = %s\n' "${existing_files[@]}"
+    confirm "Skip them (keep your versions)? Answer n to overwrite them" y || force=true
+  fi
 fi
 
 args=("$target" --ref "$ref")

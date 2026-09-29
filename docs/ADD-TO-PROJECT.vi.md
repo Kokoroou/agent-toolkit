@@ -140,7 +140,7 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 | `--project-owner`, `--project-number` | `PROJECT_OWNER`, `PROJECT_NUMBER`, `PROJECT_TOKEN` | GitHub Projects (§9.1) |
 | `--default-develop` / `--keep-default` | | Đổi / giữ default branch (mặc định: hỏi, `--yes` → đổi) |
 | `--commit` / `--no-commit` | | Commit + push hay để bạn tự làm (mặc định: hỏi, `--yes` → commit) |
-| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Bỏ qua từng phần; `--force` ghi đè file đã có |
+| `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Bỏ qua từng phần; `--force` ghi đè file đã có (không có thì trình cài liệt kê và hỏi — mặc định: giữ nguyên) |
 | `-y`, `--yes` | | Không hỏi gì; secret thiếu thì bỏ qua và báo ở cuối |
 
 </details>
