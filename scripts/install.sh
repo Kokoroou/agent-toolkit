@@ -22,6 +22,8 @@
 # Options (environment variable in brackets):
 #   --ref <ref>             toolkit version to pin                  [AGENT_TOOLKIT_REF, v0]
 #   --stack <s>             auto|node|pnpm|yarn|python|go|none      [AGENT_TOOLKIT_STACK, auto]
+#   --tools <k=v,...>       override detected tools, e.g. test=vitest,format=none
+#                           (keys: bootstrap.sh --help)             [AGENT_TOOLKIT_TOOLS]
 #   --claude-auth <a>       oauth|api-key|skip                      [AGENT_TOOLKIT_CLAUDE_AUTH]
 #                           values: [CLAUDE_CODE_OAUTH_TOKEN] / [ANTHROPIC_API_KEY]
 #   --app-id <id>           GitHub App ID                           [AGENT_APP_ID]
@@ -38,7 +40,7 @@
 #   -y, --yes               non-interactive
 set -euo pipefail
 
-usage() { sed -n '2,38p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,40p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 # ── helpers ─────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then b=$'\e[1m' g=$'\e[32m' y=$'\e[33m' r=$'\e[31m' n=$'\e[0m'; else b="" g="" y="" r="" n=""; fi
@@ -142,7 +144,7 @@ for k in $secret_keys; do
   if [[ -z "${!k:-}" ]]; then v=$(store_get "$k"); [[ -n "$v" ]] && export "$k=$v"; fi
 done
 
-target="." ref="${AGENT_TOOLKIT_REF:-v0}" stack="${AGENT_TOOLKIT_STACK:-auto}"
+target="." ref="${AGENT_TOOLKIT_REF:-v0}" stack="${AGENT_TOOLKIT_STACK:-auto}" tools="${AGENT_TOOLKIT_TOOLS:-}"
 claude_auth="${AGENT_TOOLKIT_CLAUDE_AUTH:-}"
 app_id="${AGENT_APP_ID:-}" app_key_file="${AGENT_APP_PRIVATE_KEY_FILE:-}"
 project_owner="${PROJECT_OWNER:-}" project_number="${PROJECT_NUMBER:-}"
@@ -152,6 +154,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
     --stack) stack="$2"; shift 2 ;;
+    --tools) tools="$2"; shift 2 ;;
     --claude-auth) claude_auth="$2"; shift 2 ;;
     --app-id) app_id="$2"; shift 2 ;;
     --app-key) app_key_file="$2"; shift 2 ;;
@@ -270,10 +273,19 @@ fi
 args=("$target" --ref "$ref")
 if grep -q -- '--stack' "$toolkit_dir/scripts/bootstrap.sh"; then args+=(--stack "$stack")
 elif [[ "$stack" != auto && "$stack" != node ]]; then warn "toolkit $ref has no stack presets — edit the \"edit for your stack\" blocks by hand"; fi
+if [[ -n "$tools" ]]; then
+  if grep -q -- '--tools' "$toolkit_dir/scripts/bootstrap.sh"; then args+=(--tools "$tools")
+  else warn "toolkit $ref does not detect tools — --tools ignored; edit the \"edit for your stack\" blocks by hand"; fi
+fi
 [[ "$force" == true ]] && args+=(--force)
 [[ "$labels" == true ]] || args+=(--no-labels)
-AGENT_TOOLKIT_QUIET_NEXT_STEPS=1 bash "$toolkit_dir/scripts/bootstrap.sh" "${args[@]}" | sed 's/^/  /'
-[[ "$stack" == none ]] && warn "stack 'none': the workflows still use the Node defaults — edit the \"edit for your stack\" blocks"
+boot_out=$(AGENT_TOOLKIT_QUIET_NEXT_STEPS=1 bash "$toolkit_dir/scripts/bootstrap.sh" "${args[@]}") || die "bootstrap.sh failed"
+printf '%s\n' "$boot_out" | sed 's/^/  /'
+# Steps bootstrap left empty (no linter/formatter/tests detected) go on the final to-do list.
+while IFS= read -r l; do todo+=("${l#  ! }"); done < <(printf '%s\n' "$boot_out" | grep '^  ! ' || true)
+if [[ "$stack" == none ]] && ! grep -q -- '--detect-tools' "$toolkit_dir/scripts/bootstrap.sh"; then
+  warn "stack 'none': the workflows still use the Node defaults — edit the \"edit for your stack\" blocks"
+fi
 
 if [[ -n "$project_owner" && -n "$project_number" ]]; then
   f="$target/.github/workflows/agent-triage.yml"

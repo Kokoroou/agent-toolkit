@@ -57,7 +57,7 @@ nếu thiếu, rồi chạy chính script đó bằng Git Bash) làm lần lư�
 | Bước | Làm gì | Tương ứng mục |
 |---|---|---|
 | 1 | Kiểm tra `git`, `gh` (đề nghị cài nếu thiếu) và `gh auth login` | GETTING-STARTED §3 |
-| 2 | Nhận diện stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go), chép template với lệnh đúng stack, tạo nhãn và branch `develop` | §2, §3 |
+| 2 | Nhận diện stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go) và linter, formatter, test runner dự án đang dùng, chép template với lệnh tương ứng, tạo nhãn và branch `develop` | §2, §3 |
 | 3 | Đặt secret: token Claude, App ID + private key, `PROJECT_TOKEN` | §5 |
 | 4 | Bật *Workflow permissions* (read/write + tạo PR), squash merge, xoá branch sau merge, Dependabot alerts | §6 |
 | 5 | Commit `.github/` + `CLAUDE.md`, push lên default branch và `develop`, đặt `develop` làm default branch | §7, §8 |
@@ -132,7 +132,8 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 |---|---|---|
 | `<path>` | | Repo dự án (mặc định: thư mục hiện tại) |
 | `--ref <ref>` | `AGENT_TOOLKIT_REF` | Phiên bản toolkit để ghim (mặc định `v0`, xem §10) |
-| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (mặc định), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (giữ lệnh Node mặc định để tự sửa) |
+| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (mặc định), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (để trống mọi lệnh cho bạn tự điền) |
+| `--tools <k=v,...>` | `AGENT_TOOLKIT_TOOLS` | Ghi đè công cụ đã nhận diện, vd `test=vitest,format=none` (§3) |
 | `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` hoặc `skip` |
 | | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Giá trị secret Claude |
 | `--app-id <id>` | `AGENT_APP_ID` | App ID của GitHub App |
@@ -193,6 +194,7 @@ gọi nó rồi làm tiếp secret, settings và commit.
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
 | `--stack <s>` | Điền sẵn lệnh cho stack: `auto` (mặc định, nhận diện từ file trong repo), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Các giá trị giống ví dụ ở §3.3. |
+| `--tools <k=v,...>` | Ghi đè từng công cụ đã nhận diện, vd `--tools test=vitest,format=none` (các khóa ở §3). `--detect-tools` in ra giá trị sẽ dùng rồi thoát. |
 | `--ref <ref>` | Ghim mọi `uses: kokoroou/agent-toolkit/...@<ref>`. Khuyến nghị `v0` (tag di động của bản 0.x hiện tại; `v1` khi toolkit lên 1.0.0). `main` = luôn mới nhất, chỉ dùng cho sandbox. Mặc định: `main`. |
 | `--force` | Ghi đè file đã có trong repo dự án. |
 | `--no-labels` | Không tạo nhãn / branch `develop` (khi chưa có `gh` hoặc đã tạo rồi). |
@@ -215,11 +217,12 @@ gọi nó rồi làm tiếp secret, settings và commit.
    | `.github/dependabot.yml` | Cập nhật dependency, PR vào `develop` |
    | `CLAUDE.md` | Khung hướng dẫn dự án cho agent |
 
-2. Thay `@main` trong các dòng `uses:` bằng `--ref`, điền lệnh theo `--stack` vào các
-   khối `edit for your stack`, `dependabot.yml`, `release.yml` và mục *Commands* của `CLAUDE.md`.
+2. Thay `@main` trong các dòng `uses:` bằng `--ref`, điền lệnh theo `--stack` và công cụ
+   đã nhận diện (§3) vào các khối `edit for your stack`, `dependabot.yml`, `release.yml` và
+   mục *Commands* của `CLAUDE.md`.
 3. Tạo ~24 nhãn (`needs-triage`, `agent`, `risk:high`, `size:M`…) — chạy lại an toàn.
 4. Tạo branch `develop` từ default branch nếu chưa có.
-5. Ghi `.github/agent-toolkit.lock` (bản toolkit, stack, danh sách file nó quản lý) để
+5. Ghi `.github/agent-toolkit.lock` (bản toolkit, stack, công cụ, danh sách file nó quản lý) để
    `upgrade.sh` nâng cấp được về sau (§10).
 
 ### 2.3 Repo đã có sẵn file
@@ -237,9 +240,28 @@ Bootstrap in danh sách `Kept existing`. Các file này thuộc về dự án: b
 
 ## 3. Sửa workflow cho stack của dự án
 
-Template mặc định cho **Node + Jest + Prettier + ESLint**; `--stack` của bootstrap/install
-đã điền sẵn lệnh cho pnpm, yarn, Python (pytest + ruff) và Go. Vẫn nên kiểm tra các khối
-`# ── edit for your stack ──` và sửa cho khớp dự án (ví dụ dự án Python không dùng ruff).
+Bootstrap/install điền lệnh theo `--stack` **và các công cụ dự án đang dùng**, đọc từ
+file của dự án. Công cụ nào dự án không có thì không có lệnh: giá trị để `""` nên bước CI
+đó được bỏ qua, và bootstrap in một dòng `!` cho nó (install liệt kê lại ở cuối). Vẫn nên
+kiểm tra các khối `# ── edit for your stack ──`.
+
+| Stack | Khóa | Nhận diện từ → giá trị |
+|---|---|---|
+| node, pnpm, yarn | `lint` | `scripts.lint` → `script` (`npm run lint`); nếu không, `eslint` hoặc `@biomejs/biome` trong `package.json` → `eslint` / `biome`; nếu không → `none` |
+| | `format` | `scripts["format:check"]` → `script`; `prettier` (dependency, `.prettierrc*`, `prettier.config.*`) → `prettier`; `@biomejs/biome` / `biome.json` → `biome`; nếu không → `none` |
+| | `test` | `vitest` → `vitest`; `jest` → `jest`; nếu không, có `scripts.test` thật → `script` (`npm test`); nếu không → `none` |
+| | `coverage` | `yes` với Jest, hoặc Vitest có `@vitest/coverage-v8`/`-istanbul`; còn lại `no` (test chạy qua `test-command`, không gate coverage) |
+| | `build`, `tsc` | `scripts.build`; `typescript` (thêm `npx tsc` vào danh sách lệnh agent được chạy) |
+| python | `lint` | `ruff` (trong `pyproject.toml`/`requirements*.txt`/`setup.cfg`/`tox.ini`, hoặc có `ruff.toml`) → `ruff`; `flake8` / `.flake8` → `flake8`; nếu không → `none` |
+| | `format` | `black` → `black`; nếu không, `ruff` khi ruff đang lint; nếu không → `none` |
+| | `test`, `coverage` | `pytest` / `pytest.ini` / `conftest.py` → `pytest`; `pytest-cov` → coverage `yes` |
+| go | — | cố định: `go vet`, `gofmt`, `go test -cover` |
+| none | — | mọi lệnh để trống |
+
+Repo chưa có `package.json` / file dự án Python thì nhận `npm run lint` + `npm test`
+(node) hoặc ruff + pytest (python). Ghi đè khóa bất kỳ bằng `--tools`, vd
+`--tools test=jest,format=none`; kết quả được ghi vào lock (`tools=`) để `upgrade.sh`
+sinh lại đúng các lệnh đó (§10.3).
 
 ### 3.1 `ci.yml`
 
@@ -323,6 +345,18 @@ smoke-command: go build ./... && go test -run Smoke ./...
 ```yaml
 setup-command: corepack enable && pnpm install --frozen-lockfile
 extra-allowed-tools: "Bash(pnpm install:*),Bash(pnpm run:*),Bash(pnpm test:*),Bash(pnpm exec:*)"
+```
+
+**Node + Vitest** (cần `@vitest/coverage-v8` để có gate coverage):
+
+```yaml
+# ci.yml
+test-command: ""
+coverage-command: >-
+  npx vitest run --coverage --coverage.reporter=json-summary >&2 &&
+  node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
+# gate job
+smoke-command: npm run build && npx vitest run smoke
 ```
 
 Kiểm tra `coverage-command` trên máy trước khi commit — dòng cuối phải là một số:
@@ -551,10 +585,11 @@ version=0.1.0              # bản toolkit đã sinh ra các file
 ref=v0                     # --ref đã ghim
 commit=45c2ae5…            # commit chính xác của toolkit
 stack=python               # --stack đã dùng
+tools=lint=ruff,format=ruff,test=pytest,coverage=yes   # công cụ nhận diện + --tools (§3)
 managed=.github/workflows/ci.yml   # file do toolkit quản lý (một dòng mỗi file)
 ```
 
-Khi nâng cấp, script sinh lại file của **bản cũ** (commit + stack trong lock) và của
+Khi nâng cấp, script sinh lại file của **bản cũ** (commit, stack và công cụ trong lock) và của
 **bản mới**, rồi với từng file *managed* so ba phía — như `git merge`:
 
 | Bản của bạn so với bản cũ | Toolkit đổi file? | Kết quả |
@@ -569,6 +604,11 @@ Khi nâng cấp, script sinh lại file của **bản cũ** (commit + stack tron
 
 Để nâng cấp không xung đột: chỉ sửa giá trị trong các khối `edit for your stack` và các
 input của `with:`; muốn thêm bước riêng thì viết workflow riêng thay vì sửa caller.
+
+Dự án đổi công cụ (vd chuyển từ Jest sang Vitest)? `upgrade.sh --tools test=vitest` đổi
+các lệnh bạn chưa sửa và ghi giá trị mới vào lock. Lock ghi trước khi có tính năng nhận
+diện công cụ thì không có dòng `tools=`: lần nâng cấp tới sẽ nhận diện công cụ từ dự án,
+nên các lệnh cho công cụ dự án không dùng (vd `npx jest`) sẽ được thay.
 
 ### 10.4 File trùng tên — ai sở hữu file nào
 

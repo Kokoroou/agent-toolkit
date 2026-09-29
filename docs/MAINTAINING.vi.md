@@ -99,9 +99,12 @@ scripts/lint.sh
 1. Mọi file JSON hợp lệ.
 2. `claude plugin validate --strict` cho plugin và marketplace.
 3. `actionlint` cho `.github/workflows/*.yml` (kèm shellcheck cho script nhúng).
-4. Caller template: bootstrap với từng `--stack` (node, pnpm, yarn, python, go), thay
+4. Caller template: bootstrap với từng `--stack` (node, pnpm, yarn, python, go, none), thay
    `kokoroou/agent-toolkit/...@ref` bằng đường dẫn local rồi actionlint lại — bắt lỗi
    thiếu/sai input hoặc secret giữa caller và reusable workflow, và YAML hỏng do preset.
+   Sau đó bootstrap vài dự án mẫu (npm + Vitest không có Prettier, pnpm + Jest + Prettier,
+   Python dùng flake8 + black) và kiểm tra lệnh theo đúng công cụ nhận diện được, cũng như
+   kiểm tra `--tools` từ chối giá trị sai.
 5. `templates/.github/labels.json` giữ mỗi nhãn trên một dòng (bootstrap đọc bằng `sed`,
    không cần `jq` trên máy người dùng).
 6. `shellcheck scripts/*.sh`.

@@ -104,10 +104,12 @@ scripts/lint.sh
 1. Every JSON file is valid.
 2. `claude plugin validate --strict` for the plugin and marketplace.
 3. `actionlint` for `.github/workflows/*.yml` (with shellcheck for embedded scripts).
-4. Caller templates: bootstrap with each `--stack` (node, pnpm, yarn, python, go), replace
-   `kokoroou/agent-toolkit/...@ref` with local paths, then actionlint again — catches
-   missing/wrong inputs or secrets between callers and reusable workflows, and YAML broken
-   by presets.
+4. Caller templates: bootstrap with each `--stack` (node, pnpm, yarn, python, go, none),
+   replace `kokoroou/agent-toolkit/...@ref` with local paths, then actionlint again —
+   catches missing/wrong inputs or secrets between callers and reusable workflows, and YAML
+   broken by presets. Then bootstrap sample projects (npm + Vitest without Prettier,
+   pnpm + Jest + Prettier, Python with flake8 + black) and check that the commands follow
+   the detected tools and `--tools` validation.
 5. `templates/.github/labels.json` keeps one label per line (bootstrap reads it with
    `sed`, so users need no `jq`).
 6. `shellcheck scripts/*.sh`.

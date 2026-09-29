@@ -6,13 +6,14 @@
 #   Windows: & ([scriptblock]::Create((irm .../scripts/install.ps1))) upgrade --to v1
 #
 # Rebuilds the files of the installed version (base) and of --to (new) with bootstrap.sh
-# and the same --stack, then for every toolkit-managed file:
+# and the same --stack and tools, then for every toolkit-managed file:
 #   unchanged locally → replaced by the new version;   changed only locally → kept;
 #   changed on both sides → 3-way merged (git merge-file), conflicts left as <<<<<<< markers.
 # New template files are added, removed ones deleted if you never edited them. Files that
 # existed before the install are project-owned and never touched; CLAUDE.md is yours after
-# the first install. The installed version, stack and managed files come from
-# .github/agent-toolkit.lock (bootstrap.sh writes it). Nothing is committed: review
+# the first install. The installed version, stack, tools and managed files come from
+# .github/agent-toolkit.lock (bootstrap.sh writes it); for installs recorded before tool
+# detection, the project's tools are detected now. Nothing is committed: review
 # `git diff`, then commit to the default branch.
 #
 # Options:
@@ -20,25 +21,27 @@
 #                       [default: the ref in the lock, i.e. the latest release of that major]
 #   --from <ref>        installed version, for installs without a lock (guessed otherwise)
 #   --stack <s>         stack used at install, for installs without a lock [default: detected]
+#   --tools <k=v,...>   change tools recorded in the lock, e.g. test=vitest (bootstrap.sh --help)
 #   --dry-run           print what would change, with diffs; write nothing
 #   --no-labels         do not create/update the labels with gh
 #   --allow-dirty       run with uncommitted changes in .github/ or CLAUDE.md
 #   --toolkit-dir <dir> use this toolkit clone (needs the history of both versions)
 set -euo pipefail
 
-usage() { sed -n '2,26p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,28p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 if [[ -t 1 ]]; then b=$'\e[1m' g=$'\e[32m' y=$'\e[33m' r=$'\e[31m' n=$'\e[0m'; else b="" g="" y="" r="" n=""; fi
 step() { printf '\n%s==> %s%s\n' "$b" "$*" "$n"; }
 say()  { printf '  %s\n' "$*"; }
 die()  { printf '%serror:%s %s\n' "$r" "$n" "$*" >&2; exit 1; }
 
-target="." to="" from="" stack="" dry_run=false labels=true allow_dirty=false toolkit_dir="" target_set=false
+target="." to="" from="" stack="" tools="" dry_run=false labels=true allow_dirty=false toolkit_dir="" target_set=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --to) to="$2"; shift 2 ;;
     --from) from="$2"; shift 2 ;;
     --stack) stack="$2"; shift 2 ;;
+    --tools) tools="$2"; shift 2 ;;
     --dry-run) dry_run=true; shift ;;
     --no-labels) labels=false; shift ;;
     --allow-dirty) allow_dirty=true; shift ;;
@@ -56,10 +59,11 @@ target=$(cd "$target" && pwd)
 git -C "$target" rev-parse --git-dir >/dev/null 2>&1 || die "$target is not a git checkout"
 lock="$target/.github/agent-toolkit.lock"
 lock_get() { sed -n "s/^$1=//p" "$lock" | head -n 1; }
-has_lock=false old_ref="" old_commit="" old_version=""
+has_lock=false old_ref="" old_commit="" old_version="" old_tools=""
 if [[ -f "$lock" ]]; then
   has_lock=true
   old_ref=$(lock_get ref) old_commit=$(lock_get commit) old_version=$(lock_get version)
+  old_tools=$(lock_get tools)
   [[ -n "$stack" ]] || stack=$(lock_get stack)
 fi
 uses_ref=$(grep -rhoE 'kokoroou/agent-toolkit/\.github/workflows/[a-z-]+\.yml@[A-Za-z0-9._/-]+' \
@@ -93,12 +97,14 @@ extract() { # <sha> <dir> — toolkit files at <sha>
   mkdir -p "$2" && git -C "$toolkit_dir" archive "$1" | tar -x -C "$2"
 }
 markers="package.json pnpm-lock.yaml yarn.lock pyproject.toml setup.py requirements.txt go.mod"
-gen() { # <toolkit files> <out dir> <ref> — bootstrap into a scratch repo, keep its files
+gen() { # <toolkit files> <out dir> <ref> <tools> — bootstrap into a scratch repo, keep its files
   local a=("$2" --ref "$3" --no-labels) m
   mkdir -p "$2" && git -C "$2" init -q
   # The stack presets look at these files (python: pyproject.toml → pip install -e).
   for m in $markers; do if [[ -f "$target/$m" ]]; then : >"$2/$m"; fi; done
   if grep -q -- '--stack' "$1/scripts/bootstrap.sh"; then a+=(--stack "$stack"); fi
+  # The scratch repo has no real project files to detect tools from: pass them.
+  if [[ -n "$4" ]] && grep -q -- '--tools' "$1/scripts/bootstrap.sh"; then a+=(--tools "$4"); fi
   AGENT_TOOLKIT_QUIET_NEXT_STEPS=1 bash "$1/scripts/bootstrap.sh" "${a[@]}" >/dev/null
   for m in $markers; do rm -f "$2/$m"; done
   rm -rf "$2/.git" "$2/.github/agent-toolkit.lock"
@@ -109,6 +115,12 @@ new_sha=$(resolve "$to") || die "agent-toolkit has no ref '$to'"
 extract "$new_sha" "$tmp/new-tk"
 new_version=$(cat "$tmp/new-tk/version.txt" 2>/dev/null || true)
 [[ -n "$stack" ]] || stack=$(bash "$tmp/new-tk/scripts/bootstrap.sh" "$target" --detect-stack)
+# Tools: the lock's, with --tools on top; detected from the project for older locks.
+new_tools=""
+if grep -q -- '--detect-tools' "$tmp/new-tk/scripts/bootstrap.sh"; then
+  new_tools=$(bash "$tmp/new-tk/scripts/bootstrap.sh" "$target" --stack "$stack" --detect-tools \
+    ${old_tools:+--tools "$old_tools"} ${tools:+--tools "$tools"}) || die "invalid --tools"
+fi
 
 base_sha="" base_label=""
 if [[ -n "$from" ]]; then
@@ -122,7 +134,7 @@ else
   best_n=0
   for t in $(git -C "$toolkit_dir" tag -l 'v*.*.*' --sort=-v:refname | head -n 15); do
     d="$tmp/guess-$t"
-    if ! { extract "$t" "$d/tk" && gen "$d/tk" "$d/out" "$old_ref" 2>/dev/null; }; then continue; fi
+    if ! { extract "$t" "$d/tk" && gen "$d/tk" "$d/out" "$old_ref" "$new_tools" 2>/dev/null; }; then continue; fi
     k=0
     while IFS= read -r f; do
       if [[ -f "$target/$f" ]] && tr -d '\r' <"$target/$f" | cmp -s - "$d/out/$f"; then k=$((k + 1)); fi
@@ -134,14 +146,15 @@ fi
 step "Upgrading agent-toolkit in $target"
 say "from: ${base_label:-unknown version (no .github/agent-toolkit.lock; use --from <ref>)}"
 say "to:   $to${new_version:+ = v$new_version} (${new_sha:0:7})"
-say "stack: $stack"
-[[ -n "$base_sha" && "$base_sha" == "$new_sha" ]] && say "(same toolkit commit — only local drift is reported)"
+say "stack: $stack${new_tools:+ ($new_tools)}"
+[[ -n "$base_sha" && "$base_sha" == "$new_sha" && "${old_tools:-$new_tools}" == "$new_tools" ]] \
+  && say "(same toolkit commit — only local drift is reported)"
 
-gen "$tmp/new-tk" "$tmp/new" "$to"
+gen "$tmp/new-tk" "$tmp/new" "$to" "$new_tools"
 mkdir -p "$tmp/base"
 if [[ -n "$base_sha" ]]; then
   extract "$base_sha" "$tmp/base-tk"
-  gen "$tmp/base-tk" "$tmp/base" "$old_ref"
+  gen "$tmp/base-tk" "$tmp/base" "$old_ref" "${old_tools:-$new_tools}"
 fi
 
 # ── merge file by file ──────────────────────────────────────────────────────────
@@ -238,6 +251,7 @@ fi
   echo "ref=$to"
   echo "commit=$new_sha"
   echo "stack=$stack"
+  [[ -z "$new_tools" ]] || echo "tools=$new_tools"
   sort -u "$tmp/managed"
 } >"$lock"
 

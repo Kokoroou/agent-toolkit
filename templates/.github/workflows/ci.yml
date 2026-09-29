@@ -27,7 +27,8 @@ jobs:
       setup-command: npm ci
       lint-command: npm run lint
       format-check-command: npx prettier --check .
-      # coverage-command runs the tests too; its last stdout line must be the % number.
+      test-command: "" # empty: coverage-command runs the tests
+      # coverage-command: its last stdout line must be the % number.
       coverage-command: >-
         npx jest --coverage --coverageReporters=json-summary >&2 &&
         node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
