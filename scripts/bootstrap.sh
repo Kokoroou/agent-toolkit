@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 # Install the agent pipeline into a project repository.
 #
-#   scripts/bootstrap.sh <path-to-project-checkout> [--ref v0] [--stack auto] [--force] [--no-labels]
+#   scripts/bootstrap.sh <path-to-project-checkout> [--ref v0] [--stack auto] [--tools k=v,...]
+#                        [--force] [--no-labels]
 #
 # Copies the caller workflows, issue/PR templates, dependabot config and a CLAUDE.md
 # skeleton; pins every `uses: kokoroou/agent-toolkit/...@main` to --ref; fills in the
 # stack-specific commands (--stack auto|node|pnpm|yarn|python|go|none; auto detects from
-# the project's files); creates the label taxonomy and the develop branch with gh.
-# Existing files are kept unless --force. Records the toolkit version, --stack and the
-# copied files in .github/agent-toolkit.lock for scripts/upgrade.sh. For the full
-# one-command setup (tools, secrets, repo settings, commit) use scripts/install.sh.
+# the project's files) for the linter, formatter and test runner the project actually
+# uses (detected; --tools overrides single keys, e.g. --tools test=vitest,format=none);
+# creates the label taxonomy and the develop branch with gh. Existing files are kept
+# unless --force. Records the toolkit version, --stack, the tools and the copied files in
+# .github/agent-toolkit.lock for scripts/upgrade.sh. For the full one-command setup
+# (tools, secrets, repo settings, commit) use scripts/install.sh.
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
-target="" ref="main" stack="auto" force=false labels=true detect_only=false
+target="" ref="main" stack="auto" tools_override="" force=false labels=true detect=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
     --stack) stack="$2"; shift 2 ;;
+    --tools) tools_override+="${tools_override:+,}$2"; shift 2 ;; # repeatable; later keys win
     --force) force=true; shift ;;
     --no-labels) labels=false; shift ;;
-    --detect-stack) detect_only=true; shift ;; # print the detected stack and exit
+    --detect-stack) detect=stack; shift ;; # print the detected stack and exit
+    --detect-tools) detect=tools; shift ;; # print the tools for --stack (+ --tools) and exit
     -h|--help) usage 0 ;;
     *) if [[ -z "$target" ]]; then target="$1"; else usage 1; fi; shift ;;
   esac
@@ -31,10 +36,17 @@ done
 toolkit="$(cd "$(dirname "$0")/.." && pwd)"
 src="$toolkit/templates"
 
-# ── stack presets ───────────────────────────────────────────────────────────────
-# The templates default to Node + npm + Jest + Prettier + ESLint. A preset rewrites
-# single lines: <file> TAB <line prefix> TAB <new value>. The key is the prefix up to its
-# first ":"; a folded (">-") value keeps its style and its continuation lines are dropped.
+# ── stack + tool presets ────────────────────────────────────────────────────────
+# The stack is the language + package manager; the tools are what the project's own
+# files say it uses, so no command is written for a tool the project does not have (an
+# empty command skips that CI step). Tools are "key=value,..." — JS stacks: lint=script|
+# eslint|biome|none, format=script|prettier|biome|none, test=vitest|jest|script|none,
+# coverage=yes|no, build=yes|no, tsc=yes|no ("script" = the package.json script: lint,
+# format:check, test); python: lint=ruff|flake8|none, format=ruff|black|none,
+# test=pytest|none, coverage=yes|no; go and none have no keys.
+# A preset rewrites single lines: <file> TAB <line prefix> TAB <new value>. The key is the
+# prefix up to its first ":"; a folded (">-") value keeps its style and its continuation
+# lines are dropped.
 detect_stack() {
   if [[ -f "$target/package.json" ]]; then
     if [[ -f "$target/pnpm-lock.yaml" ]]; then echo pnpm
@@ -45,63 +57,205 @@ detect_stack() {
   else echo node; fi
 }
 
-preset() {
+# package.json is read with grep/awk (no node or jq needed), assuming the usual layout
+# of one "key": value per line.
+pkg_has() { # <name> — a dependency or top-level config key named <name>
+  grep -Eq "\"$1\"[[:space:]]*:" "$target/package.json" 2>/dev/null
+}
+pkg_script() { # <name> — scripts.<name> exists (npm's "no test specified" stub doesn't count)
+  local line
+  line=$(awk '/"scripts"[[:space:]]*:/ { s = 1 } s { print } s && /}/ { exit }' "$target/package.json" 2>/dev/null \
+    | grep -E "\"$1\"[[:space:]]*:" | head -n 1 || true)
+  [[ -n "$line" && "$line" != *"no test specified"* ]]
+}
+has_file() { # <glob> relative to the project
+  compgen -G "$target/$1" >/dev/null
+}
+py_has() { # <tool> — named in the Python project/requirements/config files
+  local f
+  for f in "$target"/pyproject.toml "$target"/setup.cfg "$target"/setup.py "$target"/tox.ini \
+           "$target"/requirements*.txt; do
+    [[ -f "$f" ]] && grep -Eqi "(^|[^a-z0-9_-])$1([^a-z0-9_-]|$)" "$f" && return 0
+  done
+  return 1
+}
+
+detect_tools() { # <stack> → tools spec
+  local lint=none format=none test=none coverage=no build=no tsc=no
+  case "$1" in
+    node|pnpm|yarn)
+      if [[ ! -f "$target/package.json" ]]; then
+        # Not scaffolded yet: rely on the package.json scripts every tool can sit behind.
+        echo "lint=script,format=none,test=script,coverage=no,build=yes,tsc=no"; return
+      fi
+      if pkg_script lint; then lint=script
+      elif pkg_has eslint; then lint=eslint
+      elif pkg_has @biomejs/biome; then lint=biome; fi
+      if pkg_script format:check; then format=script
+      elif pkg_has prettier || has_file '.prettierrc*' || has_file 'prettier.config.*'; then format=prettier
+      elif pkg_has @biomejs/biome || has_file 'biome.json*'; then format=biome; fi
+      if pkg_has vitest; then
+        test=vitest
+        if pkg_has @vitest/coverage-v8 || pkg_has @vitest/coverage-istanbul; then coverage=yes; fi
+      elif pkg_has jest; then test=jest coverage=yes
+      elif pkg_script test; then test=script; fi
+      if pkg_script build; then build=yes; fi
+      if pkg_has typescript; then tsc=yes; fi
+      echo "lint=$lint,format=$format,test=$test,coverage=$coverage,build=$build,tsc=$tsc" ;;
+    python)
+      if [[ ! -f "$target/pyproject.toml" && ! -f "$target/setup.py" && ! -f "$target/requirements.txt" ]]; then
+        echo "lint=ruff,format=ruff,test=pytest,coverage=yes"; return # not scaffolded yet: the usual pair
+      fi
+      if py_has ruff || has_file 'ruff.toml' || has_file '.ruff.toml'; then lint=ruff
+      elif py_has flake8 || has_file '.flake8'; then lint=flake8; fi
+      if py_has black; then format=black
+      elif [[ "$lint" == ruff ]]; then format=ruff; fi
+      if py_has pytest || has_file 'pytest.ini' || has_file 'conftest.py' || has_file 'tests/conftest.py'; then
+        test=pytest
+        if py_has pytest-cov; then coverage=yes; fi
+      fi
+      echo "lint=$lint,format=$format,test=$test,coverage=$coverage" ;;
+    go|none) echo "" ;;
+    *) echo "error: unknown --stack '$1' (auto|node|pnpm|yarn|python|go|none)" >&2; exit 1 ;;
+  esac
+}
+
+merge_tools() { # <spec> <overrides> → spec with the overridden keys, validated
+  local out="$1" kv k p new allowed
+  local -a kvs parts
+  case "$stack" in
+    node|pnpm|yarn) allowed=" lint:script|eslint|biome|none format:script|prettier|biome|none test:vitest|jest|script|none coverage:yes|no build:yes|no tsc:yes|no " ;;
+    python) allowed=" lint:ruff|flake8|none format:ruff|black|none test:pytest|none coverage:yes|no " ;;
+    *) allowed=" " ;;
+  esac
+  IFS=, read -ra kvs <<<"$2"
+  for kv in ${kvs[@]+"${kvs[@]}"}; do
+    [[ "$kv" =~ ^([a-z]+)=([a-z0-9]+)$ ]] || { echo "error: --tools entry '$kv' is not key=value" >&2; exit 1; }
+    k=${BASH_REMATCH[1]}
+    [[ "$allowed" =~ \ $k:([^ ]+)\  ]] \
+      || { echo "error: --tools key '$k' does not apply to stack '$stack'" >&2; exit 1; }
+    [[ "|${BASH_REMATCH[1]}|" == *"|${kv#*=}|"* ]] \
+      || { echo "error: --tools $kv: use $k=${BASH_REMATCH[1]}" >&2; exit 1; }
+    new="" parts=()
+    IFS=, read -ra parts <<<"$out"
+    for p in ${parts[@]+"${parts[@]}"}; do [[ "${p%%=*}" == "$k" ]] && p=$kv; new+="${new:+,}$p"; done
+    out=$new
+  done
+  echo "$out"
+}
+
+tool() { # <key> → its value in $tools
+  if [[ ",$tools," =~ ,$1=([a-z0-9]+), ]]; then echo "${BASH_REMATCH[1]}"; fi
+}
+
+preset() { # <stack>; reads $tools
   local ci=.github/workflows/ci.yml impl=.github/workflows/agent-implement.yml
   local gate=.github/workflows/agent-merge-gate.yml dep=.github/dependabot.yml
   local rel=.github/workflows/release.yml md=CLAUDE.md
-  local setup lint fmt fmtw cov test tools smoke build eco rtype
+  local setup="" lint="" fmt="" fmtw="" cov="" covmd="" test="" smoke="" build="" allow="" eco="" rtype=""
+  local md_none="none" pct
+  pct="node -e \"console.log(require('./coverage/coverage-summary.json').total.lines.pct)\""
   case "$1" in
-    node|none) return 0 ;;
-    pnpm|yarn)
-      local pm="$1" x jest_cov
-      if [[ "$pm" == pnpm ]]; then setup="corepack enable && pnpm install --frozen-lockfile" x="pnpm exec"
-      else setup="corepack enable && yarn install --frozen-lockfile" x="yarn"; fi
-      jest_cov="$x jest --coverage"
-      lint="$pm run lint"; fmt="$x prettier --check ."; fmtw="$x prettier --write ."
-      cov="$jest_cov --coverageReporters=json-summary >&2 && node -e \"console.log(require('./coverage/coverage-summary.json').total.lines.pct)\""
-      test="$pm test"; build="$pm run build"
-      tools="\"Bash(corepack enable),Bash($pm install:*),Bash($pm run:*),Bash($pm test:*),Bash($x:*)\""
-      smoke="$pm run build && $pm test -- smoke"
-      eco=npm rtype=node
-      printf '%s\t%s\t%s\n' "$md" "- Coverage:" "\`$jest_cov\`" ;;
+    node|pnpm|yarn)
+      local pm x smoke_test=""
+      case "$1" in
+        node) pm=npm x=npx setup="npm ci" allow="Bash(npm ci),Bash(npm run:*),Bash(npm test:*)" ;;
+        pnpm) pm=pnpm x="pnpm exec" setup="corepack enable && pnpm install --frozen-lockfile"
+              allow="Bash(corepack enable),Bash(pnpm install:*),Bash(pnpm run:*),Bash(pnpm test:*),Bash(pnpm exec:*)" ;;
+        yarn) pm=yarn x=yarn setup="corepack enable && yarn install --frozen-lockfile"
+              allow="Bash(corepack enable),Bash(yarn install:*),Bash(yarn run:*),Bash(yarn test:*),Bash(yarn:*)" ;;
+      esac
+      npx_allow() { if [[ "$pm" == npm ]]; then allow+=",Bash(npx $1:*)"; fi; } # pnpm exec / yarn cover the rest
+      case "$(tool lint)" in
+        script) lint="$pm run lint" ;;
+        eslint) lint="$x eslint ."; npx_allow eslint ;;
+        biome) lint="$x biome lint ."; npx_allow biome ;;
+      esac
+      case "$(tool format)" in
+        script) fmt="$pm run format:check" fmtw="$pm run format" ;;
+        prettier) fmt="$x prettier --check ." fmtw="$x prettier --write ."; npx_allow prettier ;;
+        biome) fmt="$x biome format ." fmtw="$x biome format --write ."; npx_allow biome ;;
+      esac
+      case "$(tool test)" in
+        vitest)
+          test="$x vitest run" smoke_test="$x vitest run smoke"; npx_allow vitest
+          if [[ "$(tool coverage)" == yes ]]; then
+            covmd="$x vitest run --coverage"
+            cov="$covmd --coverage.reporter=json-summary >&2 && $pct"
+          fi ;;
+        jest)
+          test="$x jest" smoke_test="$x jest smoke"; npx_allow jest
+          if [[ "$(tool coverage)" == yes ]]; then
+            covmd="$x jest --coverage"
+            cov="$covmd --coverageReporters=json-summary >&2 && $pct"
+          fi ;;
+        script) test="$pm test" smoke_test="$pm test -- smoke" ;;
+      esac
+      if [[ "$(tool tsc)" == yes ]]; then npx_allow tsc; fi
+      if [[ "$(tool build)" == yes ]]; then build="$pm run build"; fi
+      smoke="$build${build:+${smoke_test:+ && }}$smoke_test"
+      allow="\"$allow\""
+      eco=npm rtype=node ;;
     python)
       if [[ -f "$target/pyproject.toml" || -f "$target/setup.py" ]]; then setup="pip install -e \".[dev]\""
       else setup="pip install -r requirements.txt"; fi
-      lint="ruff check ."; fmt="ruff format --check ."; fmtw="ruff format ."
-      cov="pytest --cov --cov-report=term >&2 && coverage report --format=total"
-      test="pytest"; build="python -m build"
-      tools="\"Bash(pip install:*),Bash(pytest:*),Bash(ruff:*),Bash(python -m:*),Bash(mypy:*),Bash(coverage:*)\""
-      smoke="pytest -m smoke"
-      eco=pip rtype=python
-      printf '%s\t%s\t%s\n' "$md" "- Coverage:" "\`pytest --cov\`" ;;
+      allow="Bash(pip install:*),Bash(python -m:*),Bash(mypy:*)"
+      case "$(tool lint)" in
+        ruff) lint="ruff check ." ;;
+        flake8) lint="flake8 ."; allow+=",Bash(flake8:*)" ;;
+      esac
+      case "$(tool format)" in
+        ruff) fmt="ruff format --check ." fmtw="ruff format ." ;;
+        black) fmt="black --check ." fmtw="black ."; allow+=",Bash(black:*)" ;;
+      esac
+      if [[ "$(tool lint)" == ruff || "$(tool format)" == ruff ]]; then allow+=",Bash(ruff:*)"; fi
+      if [[ "$(tool test)" == pytest ]]; then
+        test="pytest" smoke="pytest -m smoke"; allow+=",Bash(pytest:*)"
+        if [[ "$(tool coverage)" == yes ]]; then
+          covmd="pytest --cov"
+          cov="pytest --cov --cov-report=term >&2 && coverage report --format=total"; allow+=",Bash(coverage:*)"
+        fi
+      fi
+      build="python -m build"
+      allow="\"$allow\""
+      eco=pip rtype=python ;;
     go)
       setup="go mod download"
       lint="go vet ./..."; fmt="test -z \"\$(gofmt -l .)\""; fmtw="gofmt -w ."
       cov="go test -coverprofile=c.out ./... >&2 && go tool cover -func=c.out | tail -1 | awk '{print \$3}'"
+      covmd="go test -cover ./..."
       test="go test ./..."; build="go build ./..."
-      tools="\"Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*),Bash(go mod:*),Bash(go tool cover:*)\""
+      allow="\"Bash(go build:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*),Bash(go mod:*),Bash(go tool cover:*)\""
       smoke="go build ./... && go test -run Smoke ./..."
-      eco=gomod rtype=go
-      printf '%s\t%s\t%s\n' "$md" "- Coverage:" "\`go test -cover ./...\`" ;;
+      eco=gomod rtype=go ;;
+    none) md_none="TODO" ;; # every command empty: fill them in by hand
     *) echo "error: unknown --stack '$1' (auto|node|pnpm|yarn|python|go|none)" >&2; exit 1 ;;
   esac
+  y() { printf '%s' "${1:-\"\"}"; }                       # empty → "" (the step is skipped)
+  m() { if [[ -n "$1" ]]; then printf "\`%s\`" "$1"; else printf '%s' "$md_none"; fi; }
+  # With a coverage command the tests run once, inside it; without one, test-command runs them.
+  local ci_test="$test"; [[ -z "$cov" ]] || ci_test=""
   printf '%s\t%s\t%s\n' \
-    "$ci" "setup-command:" "$setup" \
-    "$ci" "lint-command:" "$lint" \
-    "$ci" "format-check-command:" "$fmt" \
-    "$ci" "coverage-command:" "$cov" \
-    "$impl" "setup-command:" "$setup" \
-    "$impl" "extra-allowed-tools:" "$tools" \
-    "$gate" "setup-command:" "$setup" \
-    "$gate" "extra-allowed-tools:" "$tools" \
-    "$gate" "smoke-command:" "$smoke" \
-    "$dep" "- package-ecosystem: npm" "$eco" \
-    "$rel" "release-type:" "$rtype" \
-    "$md" "- Install:" "\`$setup\`" \
-    "$md" "- Lint:" "\`$lint\`" \
-    "$md" "- Format:" "\`$fmtw\` (check: \`$fmt\`)" \
-    "$md" "- Test:" "\`$test\`" \
-    "$md" "- Build:" "\`$build\`"
+    "$ci" "setup-command:" "$(y "$setup")" \
+    "$ci" "lint-command:" "$(y "$lint")" \
+    "$ci" "format-check-command:" "$(y "$fmt")" \
+    "$ci" "test-command:" "$(y "$ci_test")" \
+    "$ci" "coverage-command:" "$(y "$cov")" \
+    "$impl" "setup-command:" "$(y "$setup")" \
+    "$impl" "extra-allowed-tools:" "$(y "$allow")" \
+    "$gate" "setup-command:" "$(y "$setup")" \
+    "$gate" "extra-allowed-tools:" "$(y "$allow")" \
+    "$gate" "smoke-command:" "$(y "$smoke")" \
+    "$md" "- Install:" "$(m "$setup")" \
+    "$md" "- Lint:" "$(m "$lint")" \
+    "$md" "- Test:" "$(m "$test")" \
+    "$md" "- Coverage:" "$(m "$covmd")" \
+    "$md" "- Build:" "$(m "$build")"
+  if [[ -n "$fmt" ]]; then printf '%s\t%s\t%s\n' "$md" "- Format:" "\`$fmtw\` (check: \`$fmt\`)"
+  else printf '%s\t%s\t%s\n' "$md" "- Format:" "$md_none"; fi
+  if [[ -n "$eco" ]]; then
+    printf '%s\t%s\t%s\n' "$dep" "- package-ecosystem: npm" "$eco" "$rel" "release-type:" "$rtype"
+  fi
 }
 
 apply_preset() { # <rules-file> <relative path> <file>
@@ -118,19 +272,37 @@ apply_preset() { # <rules-file> <relative path> <file>
         if (substr(body, 1, length(pre[i])) != pre[i]) continue
         key = substr(pre[i], 1, index(pre[i], ":"))
         rest = substr(body, length(key) + 1); sub(/^[ \t]+/, "", rest)
-        if (rest ~ /^>-/) { print pad key " >-"; print pad "  " val[i]; skip = 1 }
-        else print pad key " " val[i]
+        if (rest ~ /^>-/ && val[i] != "\"\"") { print pad key " >-"; print pad "  " val[i]; skip = 1 }
+        else { print pad key " " val[i]; if (rest ~ /^>-/) skip = 1 }
         next
       }
       print
     }' "$1" "$3" >"$3.tmp" && mv "$3.tmp" "$3"
 }
 
-if [[ "$detect_only" == true ]]; then detect_stack; exit 0; fi
+if [[ "$detect" == stack ]]; then detect_stack; exit 0; fi
 [[ "$stack" == auto ]] && stack=$(detect_stack)
+tools=$(detect_tools "$stack")
+tools=$(merge_tools "$tools" "$tools_override")
+if [[ "$detect" == tools ]]; then echo "$tools"; exit 0; fi
 rules=$(mktemp); trap 'rm -f "$rules"' EXIT
 preset "$stack" >"$rules"
-echo "Stack: $stack"
+echo "Stack: $stack${tools:+ ($tools)}"
+# Say which CI steps stay empty, so nobody mistakes a skipped step for a passing one.
+case "$stack" in
+  node|pnpm|yarn|python)
+    [[ "$(tool lint)" != none ]] || echo "  ! no linter detected: lint step skipped (lint-command is empty)"
+    [[ "$(tool format)" != none ]] || echo "  ! no formatter detected: format check skipped (format-check-command is empty)"
+    if [[ "$(tool test)" == none ]]; then echo "  ! no test runner detected: no tests or coverage in CI"
+    elif [[ "$(tool coverage)" != yes ]]; then
+      case "$(tool test)" in
+        vitest) echo "  ! no coverage gate: add @vitest/coverage-v8, then set coverage-command in ci.yml (docs/ADD-TO-PROJECT.md §3.3)" ;;
+        pytest) echo "  ! no coverage gate: add pytest-cov, then set coverage-command in ci.yml (docs/ADD-TO-PROJECT.md §3.3)" ;;
+        *) echo "  ! no coverage gate: coverage-command is empty (tests run via test-command)" ;;
+      esac
+    fi ;;
+  none) echo "  ! stack 'none': every command is empty; fill in the \"edit for your stack\" blocks" ;;
+esac
 
 # ── copy templates ──────────────────────────────────────────────────────────────
 copied=() skipped=()
@@ -173,6 +345,7 @@ lock="$target/.github/agent-toolkit.lock"
     fi
     echo "commit=$commit"
     echo "stack=$stack"
+    echo "tools=$tools"
   fi
   for f in ${copied[@]+"${copied[@]}"}; do [[ "$f" == CLAUDE.md ]] || echo "managed=$f"; done
 } | awk '!/^managed=/ || !seen[$0]++' >"$lock.tmp" && mv "$lock.tmp" "$lock"

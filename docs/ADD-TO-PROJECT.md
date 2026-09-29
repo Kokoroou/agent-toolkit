@@ -57,7 +57,7 @@ CLI with `winget` if missing, then runs that same script under Git Bash) does, i
 | Step | What it does | Matching section |
 |---|---|---|
 | 1 | Checks `git`, `gh` (offers to install if missing) and `gh auth login` | GETTING-STARTED §3 |
-| 2 | Detects the stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go), copies the templates with the right commands, creates labels and the `develop` branch | §2, §3 |
+| 2 | Detects the stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go) and the linter, formatter and test runner the project uses, copies the templates with the matching commands, creates labels and the `develop` branch | §2, §3 |
 | 3 | Sets secrets: Claude token, App ID + private key, `PROJECT_TOKEN` | §5 |
 | 4 | Enables *Workflow permissions* (read/write + create PRs), squash merge, delete branch after merge, Dependabot alerts | §6 |
 | 5 | Commits `.github/` + `CLAUDE.md`, pushes to the default branch and `develop`, makes `develop` the default branch | §7, §8 |
@@ -137,7 +137,8 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 |---|---|---|
 | `<path>` | | Project repo (default: current directory) |
 | `--ref <ref>` | `AGENT_TOOLKIT_REF` | Toolkit version to pin (default `v0`, see §10) |
-| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (default), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (keep the default Node commands to edit yourself) |
+| `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (default), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (all commands left empty for you to fill in) |
+| `--tools <k=v,...>` | `AGENT_TOOLKIT_TOOLS` | Override detected tools, e.g. `test=vitest,format=none` (§3) |
 | `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` or `skip` |
 | | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Claude secret value |
 | `--app-id <id>` | `AGENT_APP_ID` | GitHub App ID |
@@ -201,6 +202,7 @@ calls it and then continues with secrets, settings and the commit.
 | Option | Meaning |
 |---|---|
 | `--stack <s>` | Pre-fill commands for a stack: `auto` (default, detected from repo files), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Values match the examples in §3.3. |
+| `--tools <k=v,...>` | Override single detected tools, e.g. `--tools test=vitest,format=none` (keys in §3). `--detect-tools` prints what would be used and exits. |
 | `--ref <ref>` | Pin every `uses: kokoroou/agent-toolkit/...@<ref>`. Recommended: `v0` (moving tag of the current 0.x release; `v1` once the toolkit reaches 1.0.0). `main` = always latest, sandbox only. Default: `main`. |
 | `--force` | Overwrite existing files in the project repo. |
 | `--no-labels` | Do not create labels / the `develop` branch (when `gh` is unavailable or they already exist). |
@@ -223,12 +225,12 @@ calls it and then continues with secrets, settings and the commit.
    | `.github/dependabot.yml` | Dependency updates, PRs into `develop` |
    | `CLAUDE.md` | Project guidance skeleton for the agents |
 
-2. Replaces `@main` in the `uses:` lines with `--ref`, and fills in the `--stack` commands
-   in the `edit for your stack` blocks, `dependabot.yml`, `release.yml` and the *Commands*
-   section of `CLAUDE.md`.
+2. Replaces `@main` in the `uses:` lines with `--ref`, and fills in the commands for the
+   `--stack` and the detected tools (§3) in the `edit for your stack` blocks,
+   `dependabot.yml`, `release.yml` and the *Commands* section of `CLAUDE.md`.
 3. Creates ~24 labels (`needs-triage`, `agent`, `risk:high`, `size:M`…) — safe to re-run.
 4. Creates the `develop` branch from the default branch if missing.
-5. Writes `.github/agent-toolkit.lock` (toolkit version, stack, list of files it manages)
+5. Writes `.github/agent-toolkit.lock` (toolkit version, stack, tools, list of files it manages)
    so `upgrade.sh` can upgrade later (§10).
 
 ### 2.3 Repo with existing files
@@ -247,10 +249,29 @@ Bootstrap prints a `Kept existing` list. Those files belong to the project: boot
 
 ## 3. Adapt the workflows to your stack
 
-The default template is **Node + Jest + Prettier + ESLint**; `--stack` in bootstrap/install
-already fills in commands for pnpm, yarn, Python (pytest + ruff) and Go. Still review the
-`# ── edit for your stack ──` blocks and adjust them to the project (e.g. a Python project
-that does not use ruff).
+Bootstrap/install fill in the commands from the `--stack` **and the tools the project
+already uses**, read from its files. A tool the project does not have gets no command:
+the value stays `""` and that CI step is skipped, and bootstrap prints a `!` line for it
+(install lists them again at the end). Still review the `# ── edit for your stack ──`
+blocks.
+
+| Stack | Key | Detected from → value |
+|---|---|---|
+| node, pnpm, yarn | `lint` | `scripts.lint` → `script` (`npm run lint`); else `eslint` or `@biomejs/biome` in `package.json` → `eslint` / `biome`; else `none` |
+| | `format` | `scripts["format:check"]` → `script`; `prettier` (dependency, `.prettierrc*`, `prettier.config.*`) → `prettier`; `@biomejs/biome` / `biome.json` → `biome`; else `none` |
+| | `test` | `vitest` → `vitest`; `jest` → `jest`; else a real `scripts.test` → `script` (`npm test`); else `none` |
+| | `coverage` | `yes` for Jest, or Vitest with `@vitest/coverage-v8`/`-istanbul`; else `no` (tests run via `test-command`, no coverage gate) |
+| | `build`, `tsc` | `scripts.build`; `typescript` (adds `npx tsc` to the agent's allowed tools) |
+| python | `lint` | `ruff` (in `pyproject.toml`/`requirements*.txt`/`setup.cfg`/`tox.ini`, or `ruff.toml`) → `ruff`; `flake8` / `.flake8` → `flake8`; else `none` |
+| | `format` | `black` → `black`; else `ruff` if ruff lints; else `none` |
+| | `test`, `coverage` | `pytest` / `pytest.ini` / `conftest.py` → `pytest`; `pytest-cov` → coverage `yes` |
+| go | — | fixed: `go vet`, `gofmt`, `go test -cover` |
+| none | — | every command empty |
+
+A repo with no `package.json` / Python project file yet gets `npm run lint` + `npm test`
+(node) or ruff + pytest (python). Override any key with `--tools`, e.g.
+`--tools test=jest,format=none`; the result is recorded in the lock (`tools=`), so
+`upgrade.sh` regenerates the same commands (§10.3).
 
 ### 3.1 `ci.yml`
 
@@ -334,6 +355,18 @@ smoke-command: go build ./... && go test -run Smoke ./...
 ```yaml
 setup-command: corepack enable && pnpm install --frozen-lockfile
 extra-allowed-tools: "Bash(pnpm install:*),Bash(pnpm run:*),Bash(pnpm test:*),Bash(pnpm exec:*)"
+```
+
+**Node + Vitest** (needs `@vitest/coverage-v8` for the coverage gate):
+
+```yaml
+# ci.yml
+test-command: ""
+coverage-command: >-
+  npx vitest run --coverage --coverage.reporter=json-summary >&2 &&
+  node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
+# gate job
+smoke-command: npm run build && npx vitest run smoke
 ```
 
 Check `coverage-command` locally before committing — the last line must be a number:
@@ -567,11 +600,12 @@ version=0.1.0              # toolkit release that generated the files
 ref=v0                     # the pinned --ref
 commit=45c2ae5…            # exact toolkit commit
 stack=python               # the --stack used
+tools=lint=ruff,format=ruff,test=pytest,coverage=yes   # detected tools + --tools (§3)
 managed=.github/workflows/ci.yml   # toolkit-managed file (one line per file)
 ```
 
-When upgrading, the script regenerates the files of the **old release** (commit + stack
-from the lock) and of the **new release**, then compares three sides for each *managed*
+When upgrading, the script regenerates the files of the **old release** (commit, stack
+and tools from the lock) and of the **new release**, then compares three sides for each *managed*
 file — like `git merge`:
 
 | Your copy vs the old release | Toolkit changed the file? | Result |
@@ -586,6 +620,11 @@ file — like `git merge`:
 
 For conflict-free upgrades: only change values in the `edit for your stack` blocks and the
 `with:` inputs; for extra steps write your own workflow instead of editing a caller.
+
+Changed tools (e.g. moved from Jest to Vitest)? `upgrade.sh --tools test=vitest` switches
+the commands you never edited and records the new value. Locks written before tool
+detection have no `tools=` line: the tools are detected from the project on the next
+upgrade, so commands for tools the project does not use (e.g. `npx jest`) are replaced.
 
 ### 10.4 Files with the same name — who owns what
 
