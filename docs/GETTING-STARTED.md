@@ -203,6 +203,12 @@ claude plugin marketplace add kokoroou/agent-toolkit
 claude plugin install pipeline@agent-toolkit
 ```
 
+This installs the plugin on your machine only. Projects set up with the installer also
+enable it in their `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`),
+so Claude Code offers to install it when you open the project, and cloud sessions on
+claude.ai/code load it on their own
+([AGENT-SESSION §5](AGENT-SESSION.md#5-a-session-in-claude-cloud)).
+
 In Claude Code, from the project repo directory (`gh auth login` is needed so the commands
 can read issues/PRs):
 

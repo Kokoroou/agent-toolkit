@@ -1,5 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "agent-toolkit": {
+      "source": { "source": "github", "repo": "kokoroou/agent-toolkit" }
+    }
+  },
+  "enabledPlugins": {
+    "pipeline@agent-toolkit": true
+  },
   "permissions": {
     "deny": [
       "Bash(rclone:*)",
