@@ -123,6 +123,7 @@ echo "== upgrade.sh --branch-model and switch-branch-model.sh: gitlab-flow ↔ g
 o="$tmp/switch-origin.git" p="$tmp/switch-project"
 git init -q --bare -b main "$o" && git clone -q "$o" "$p" 2>/dev/null
 git -C "$p" switch -q -c main && echo x >"$p/README" && gitc "$p" add -A && gitc "$p" commit -qm init
+git -C "$p" config user.name lint && git -C "$p" config user.email lint@localhost # the switch script commits
 "$tk/scripts/bootstrap.sh" "$p" --ref v9.9.9 --stack go --no-labels >/dev/null
 edit 's/max-turns: 80/max-turns: 50/' "$p/.github/workflows/agent-implement.yml" # a local edit to keep
 gitc "$p" add -A && gitc "$p" commit -qm install && git -C "$p" push -q origin main main:develop 2>/dev/null
