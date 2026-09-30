@@ -39,7 +39,7 @@ Mục lục:
 ## 1. Pipeline làm gì
 
 ```
-issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ main ─▶ (bạn) ─▶ release
 ```
 
 - Bạn mở issue theo template (Goal / Constraints / Acceptance criteria).
@@ -48,17 +48,18 @@ issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implem
 - Issue đủ ý được gắn `ready-for-plan` kèm comment hướng dẫn bước tiếp. Bạn khởi động
   **build agent** khi muốn: `/pipeline:build N` trong Claude Code trên máy hoặc trên web.
   Nó tạo branch `agent/issue-N`, lập kế hoạch, viết code + test và, sau khi bạn xác nhận,
-  mở PR vào `develop`. (Tuỳ chọn: đặt biến repo `AGENT_AUTO_BUILD=true` để issue có `risk`
+  mở PR vào `main`. (Tuỳ chọn: đặt biến repo `AGENT_AUTO_BUILD=true` để issue có `risk`
   khác `high` và `size` ≤ M tự build trên GitHub Actions, hoặc gắn nhãn `agent:implement`
   cho từng issue.)
 - **CI** (lint, format, test, coverage không giảm, Semgrep, Gitleaks) và **reviewer
   agent** chạy trên PR.
-- **Merge gate** squash-merge PR xanh vào `develop`; PR đỏ được comment lệnh
+- **Merge gate** squash-merge PR xanh vào `main`; PR đỏ được comment lệnh
   `/pipeline:build pr P` để bạn chạy (với `AGENT_AUTO_BUILD=true` thì PR được gửi lại build
   agent trên Actions, tối đa 3 lần, sau đó dừng với `needs-human`).
-- *Branch Sync* luôn giữ một PR promotion `develop` → `main`; bạn merge nó sau khi test,
-  release-please tạo version, CHANGELOG và GitHub Release, và `main` được merge ngược về
-  `develop`. (Dự án một người? Chọn github-flow: PR vào thẳng `main` —
+- release-please luôn giữ một PR release trên `main`; merge nó sẽ tạo version, CHANGELOG
+  và GitHub Release. (Đó là **github-flow** mặc định. Đội muốn test trên `develop` trước
+  khi lên `main` thì chọn **gitlab-flow**: PR vào `develop`, *Branch Sync* luôn giữ PR
+  promotion `develop` → `main` và merge ngược `main` về sau mỗi lần phát hành —
   [ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.vi.md#71-mô-hình-nhánh-gitlab-flow-hay-github-flow).)
 
 Repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit (`uses: kokoroou/agent-toolkit/...@v0`),
@@ -272,11 +273,11 @@ Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.vi.md) với repo này (te
 | Đổi yêu cầu | Sửa nội dung issue đã `ready-for-plan` | Triage chạy lại, đếm vòng hỏi từ 0; PR agent cũ (nếu có) bị gắn `needs-human` |
 | Huỷ | Đóng issue | Build đang chạy không push/mở PR; PR đã mở không được fix hay merge |
 | Issue đủ ý, size S | "slugify bỏ dấu tiếng Việt", kèm 2–3 acceptance criteria cụ thể, rồi `/pipeline:build N` trong Claude Code | `ready-for-plan` → PR `agent/issue-N` có `Closes #N` |
-| PR xanh + review approve | Chờ CI và *Agent Review* xong | Merge gate squash vào `develop`, xoá branch, đóng issue |
+| PR xanh + review approve | Chờ CI và *Agent Review* xong | Merge gate squash vào `main` (`develop` với gitlab-flow), xoá branch, đóng issue |
 | PR đỏ | Đẩy thêm một commit làm hỏng test lên branch agent | Merge gate comment `/pipeline:build pr P`; chạy lệnh đó → bản sửa được push. Với `AGENT_AUTO_BUILD=true`: `fix` → agent commit sửa; sau 3 lần → `needs-human` |
 | PR rủi ro cao | Gắn nhãn `risk:high` vào PR agent | Merge gate trả `blocked`, không merge |
 | Smoke fail sau merge | Đặt `smoke-command: "false"` trong `agent-merge-gate.yml` | Sau merge có PR `revert/pr-N` mang `needs-human` |
-| Release | Merge PR promotion `develop` → `main` (merge commit) | release-please mở release PR; merge nó → tag + GitHub Release; Branch Sync merge ngược về `develop` |
+| Release | Merge PR release (gitlab-flow: trước đó merge PR promotion `develop` → `main` bằng merge commit) | tag + GitHub Release; với gitlab-flow Branch Sync merge ngược về `develop` |
 
 ### 8.3 Xem agent đã làm gì
 

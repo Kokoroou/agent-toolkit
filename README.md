@@ -18,16 +18,16 @@ approve releases.**
   and every failure stops and waits for a person (the `needs-human` label).
 
 ```
-issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ main ─▶ (you) ─▶ release
             │                                                                │                │
             └─ asks back ≤5 rounds                                           └─ fix ──────────┴─ fail → needs-human / revert
 ```
 
 Two branch models, switchable at any time with `scripts/switch-branch-model.sh`
 ([ADD-TO-PROJECT §7.1](docs/ADD-TO-PROJECT.md#71-branch-model-gitlab-flow-or-github-flow)):
-**gitlab-flow** (above: `develop` for the team's testing, an automatic promotion PR
-`develop` → `main` for QA, `main` synced back into `develop` after each release) or
-**github-flow** (agent PRs go straight to `main`, for a solo project). The toolkit ships
+**github-flow** (default, above: agent PRs go straight to `main`) or **gitlab-flow**
+(agent PRs go to `develop` for the team's testing, an automatic promotion PR `develop` →
+`main` for QA, `main` synced back into `develop` after each release). The toolkit ships
 the shared CI/CD per language (lint, format, test, coverage, release-please); how your
 project builds and deploys stays yours.
 

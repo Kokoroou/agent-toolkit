@@ -17,16 +17,16 @@ và merge — bạn mở issue, quyết định lúc thi công và duyệt bản
   lỗi đều dừng lại chờ người (nhãn `needs-human`).
 
 ```
-issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (bạn) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ main ─▶ (bạn) ─▶ release
             │                                                                │                │
             └─ hỏi lại ≤5 vòng                                               └─ fix ──────────┴─ fail → needs-human / revert
 ```
 
 Có hai mô hình nhánh, đổi qua lại bất cứ lúc nào bằng `scripts/switch-branch-model.sh`
 ([ADD-TO-PROJECT §7.1](docs/ADD-TO-PROJECT.vi.md#71-mô-hình-nhánh-gitlab-flow-hay-github-flow)):
-**gitlab-flow** (như trên: `develop` để đội dev test, PR promotion `develop` → `main` tự
-động mở để QA test, `main` được đồng bộ ngược về `develop` sau mỗi lần phát hành) hoặc
-**github-flow** (PR của agent vào thẳng `main`, cho dự án một người). Toolkit chỉ cung cấp
+**github-flow** (mặc định, như trên: PR của agent vào thẳng `main`) hoặc **gitlab-flow**
+(PR của agent vào `develop` để đội dev test, PR promotion `develop` → `main` tự động mở để
+QA test, `main` được đồng bộ ngược về `develop` sau mỗi lần phát hành). Toolkit chỉ cung cấp
 CI/CD dùng chung theo ngôn ngữ (lint, format, test, coverage, release-please); cách dự án
 build và deploy là phần bạn tự viết.
 

@@ -28,7 +28,7 @@ jobs:
     with:
       mode: implement
       issue-number: ${{ fromJSON(github.event.issue.number || inputs.issue) }}
-      base-branch: develop
+      base-branch: main
       # ── edit for your stack ───────────────────────────────────────────────
       setup-command: npm ci
       extra-allowed-tools: "Bash(npm ci),Bash(npm run:*),Bash(npm test:*),Bash(npx jest:*),Bash(npx prettier:*),Bash(npx eslint:*),Bash(npx tsc:*)"

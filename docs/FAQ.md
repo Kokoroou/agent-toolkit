@@ -54,7 +54,7 @@ them → [§2.3](ADD-TO-PROJECT.md#23-repo-with-existing-files).
    comment.
 3. Once the issue has `ready-for-plan`, in Claude Code on the project (your machine or the
    web): `/pipeline:build N` (or say "build issue N"). Confirm the push when asked.
-4. CI + the reviewer run on the PR; the merge gate squash-merges it into `develop` when green.
+4. CI + the reviewer run on the PR; the merge gate squash-merges it into `main` (`develop` with gitlab-flow) when green.
 
 ### UC-4. Work through the backlog
 
@@ -123,8 +123,9 @@ Create a dedicated key with `scripts/agent-session.sh cloud-key claude-cloud`, s
 
 ### UC-14. Release a version
 
-Merge the promotion PR `develop` → `main` that Branch Sync keeps open (with a merge commit;
-with github-flow skip this step). release-please opens a release PR;
+With gitlab-flow, first merge the promotion PR `develop` → `main` that Branch Sync keeps
+open (with a merge commit); with github-flow (the default) changes are already on `main`.
+release-please opens a release PR;
 merging that → tag, CHANGELOG, GitHub Release → [ADD-TO-PROJECT §9.4](ADD-TO-PROJECT.md#94-release).
 
 ### UC-15. Track costs
@@ -181,6 +182,7 @@ the PR → [ARCHITECTURE](ARCHITECTURE.md#github-pitfalls-already-handled).
 
 #### Why make `develop` the default branch?
 
+Only with gitlab-flow; with github-flow `main` is the default branch.
 `workflow_run`, `schedule` and `workflow_dispatch` only read workflows from the default
 branch. Keeping `main` as default works too, but you must remember to sync workflows to
 `main` → [ADD-TO-PROJECT §7](ADD-TO-PROJECT.md#7-choose-the-default-branch).

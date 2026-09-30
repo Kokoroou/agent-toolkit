@@ -10,9 +10,9 @@
 # the project's files) for the linter, formatter and test runner the project actually
 # uses (detected; --tools overrides single keys, e.g. --tools test=vitest,format=none);
 # creates the label taxonomy (and, for gitlab-flow, the develop branch) with gh. The
-# branch model: gitlab-flow (default) = agent PRs → develop, promotion PR develop → main,
-# release from main, main synced back into develop (branch-sync.yml); github-flow = agent
-# PRs → main, release from main, no develop (scripts/switch-branch-model.sh switches).
+# branch model: github-flow (default) = agent PRs → main, release from main, no develop;
+# gitlab-flow = agent PRs → develop, promotion PR develop → main, release from main, main
+# synced back into develop (branch-sync.yml). scripts/switch-branch-model.sh switches.
 # Existing files are kept unless --force. Records the toolkit version, --stack, the
 # tools, the branch model and the copied files in .github/agent-toolkit.lock for
 # scripts/upgrade.sh. For the full one-command setup (tools, secrets, repo settings,
@@ -22,7 +22,7 @@ set -euo pipefail
 usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 target="" ref="main" stack="auto" tools_override="" force=false labels=true detect=""
-branch_model="gitlab-flow"
+branch_model="github-flow"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
@@ -281,16 +281,17 @@ preset() { # <stack>; reads $tools
   fi
 }
 
-# github-flow: everything targets main instead of develop, and there is nothing to sync.
+# The templates are github-flow (everything targets main). gitlab-flow integrates on
+# develop instead, and adds branch-sync.yml.
 branch_model_rules() {
-  [[ "$branch_model" == github-flow ]] || return 0
+  [[ "$branch_model" == gitlab-flow ]] || return 0
   printf '%s\t%s\t%s\n' \
-    .github/workflows/ci.yml "branches:" "[main]" \
-    .github/workflows/ci.yml "baseline-branch:" "main" \
-    .github/workflows/agent-implement.yml "base-branch:" "main" \
-    .github/workflows/agent-merge-gate.yml "base-branch:" "main" \
-    .github/workflows/agent-review.yml "branches:" "[main]" \
-    .github/dependabot.yml "target-branch:" "main"
+    .github/workflows/ci.yml "branches:" "[develop, main]" \
+    .github/workflows/ci.yml "baseline-branch:" "develop" \
+    .github/workflows/agent-implement.yml "base-branch:" "develop" \
+    .github/workflows/agent-merge-gate.yml "base-branch:" "develop" \
+    .github/workflows/agent-review.yml "branches:" "[develop]" \
+    .github/dependabot.yml "target-branch:" "develop"
 }
 model_skips() { # <relative path> — not installed for this branch model
   [[ "$branch_model" == github-flow && "$1" == .github/workflows/branch-sync.yml ]]

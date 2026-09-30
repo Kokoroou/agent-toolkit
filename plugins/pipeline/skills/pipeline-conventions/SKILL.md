@@ -29,8 +29,8 @@ your final summary which commands you inferred.
 ## 2. Branching model
 
 The project uses one of two models (`branch-model=` in `.github/agent-toolkit.lock`):
-**gitlab-flow** (default: `develop` is the integration branch and `main` the release
-branch) or **github-flow** (no `develop`: `main` is both). The integration branch is the
+**github-flow** (default, no `develop`: `main` is both the integration and the release
+branch) or **gitlab-flow** (`develop` is the integration branch, `main` the release branch). The integration branch is the
 `base-branch` of the caller workflows.
 
 | Branch            | Who writes it                | Notes                                          |

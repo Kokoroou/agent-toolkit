@@ -29,15 +29,23 @@ for stack in node pnpm yarn python go none; do
   echo "-- $stack"; (cd "$d" && actionlint)
 done
 
-echo "== Caller templates, github-flow branch model"
+echo "== Branch models: github-flow (default), gitlab-flow callers against local reusable workflows"
 d="$tmp/github-flow"; mkdir -p "$d" && git -C "$d" init -q
-scripts/bootstrap.sh "$d" --stack node --branch-model github-flow --no-labels >/dev/null
-w="$d/.github/workflows"
-[[ ! -e "$w/branch-sync.yml" ]] || { echo "github-flow must not install branch-sync.yml"; exit 1; }
-if grep -rn 'develop' "$w" "$d/.github/dependabot.yml" | grep -v '^[^:]*:[0-9]*: *#'; then
+scripts/bootstrap.sh "$d" --stack node --no-labels >/dev/null
+[[ ! -e "$d/.github/workflows/branch-sync.yml" ]] || { echo "github-flow must not install branch-sync.yml"; exit 1; }
+if grep -rn 'develop' "$d/.github/workflows" "$d/.github/dependabot.yml" | grep -v '^[^:]*:[0-9]*: *#'; then
   echo "github-flow files still target develop"; exit 1
 fi
 grep -qx 'branch-model=github-flow' "$d/.github/agent-toolkit.lock"
+d="$tmp/gitlab-flow"; mkdir -p "$d" && git -C "$d" init -q
+scripts/bootstrap.sh "$d" --stack node --branch-model gitlab-flow --no-labels >/dev/null
+w="$d/.github/workflows"
+[[ -f "$w/branch-sync.yml" ]] || { echo "gitlab-flow must install branch-sync.yml"; exit 1; }
+grep -qx 'branch-model=gitlab-flow' "$d/.github/agent-toolkit.lock"
+grep -qx '      base-branch: develop' "$w/agent-implement.yml"
+grep -qx '      baseline-branch: develop' "$w/ci.yml"
+grep -qx '    branches: \[develop\]' "$w/agent-review.yml"
+grep -qx '    target-branch: develop' "$d/.github/dependabot.yml"
 for f in "$w"/*.yml; do
   sed 's#kokoroou/agent-toolkit/\(\.github/workflows/[a-z-]*\.yml\)@[A-Za-z0-9._-]*#./\1#' "$f" \
     >"$w/caller-$(basename "$f")" && rm "$f"
@@ -124,7 +132,7 @@ o="$tmp/switch-origin.git" p="$tmp/switch-project"
 git init -q --bare -b main "$o" && git clone -q "$o" "$p" 2>/dev/null
 git -C "$p" switch -q -c main && echo x >"$p/README" && gitc "$p" add -A && gitc "$p" commit -qm init
 git -C "$p" config user.name lint && git -C "$p" config user.email lint@localhost # the switch script commits
-"$tk/scripts/bootstrap.sh" "$p" --ref v9.9.9 --stack go --no-labels >/dev/null
+"$tk/scripts/bootstrap.sh" "$p" --ref v9.9.9 --stack go --branch-model gitlab-flow --no-labels >/dev/null
 edit 's/max-turns: 80/max-turns: 50/' "$p/.github/workflows/agent-implement.yml" # a local edit to keep
 gitc "$p" add -A && gitc "$p" commit -qm install && git -C "$p" push -q origin main main:develop 2>/dev/null
 # develop holding work main lacks: refused.

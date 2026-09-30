@@ -63,11 +63,11 @@ nếu thiếu, rồi chạy chính script đó bằng Git Bash) làm lần lư�
 | 5 | Commit `.github/` + `CLAUDE.md`, push lên default branch (và `develop`), đặt `develop` làm default branch (gitlab-flow) | §7, §8 |
 
 Chỉ những gì chưa có mới được hỏi: stack (Enter để nhận giá trị nhận diện), mô hình
-nhánh (§7.1, Enter = gitlab-flow), cách đăng nhập Claude và token (nhập ẩn; có thể để script chạy `claude setup-token`), App ID và
+nhánh (§7.1, Enter = github-flow), cách đăng nhập Claude và token (nhập ẩn; có thể để script chạy `claude setup-token`), App ID và
 đường dẫn file `.pem` (tự đoán file mới nhất trong `~/Downloads`), có commit/đổi default
 branch không. Secret đã có trong repo được giữ nguyên trừ khi bạn đồng ý thay.
 
-Chạy script khi đang đứng ở default branch (sau lần chạy đầu thường là `develop`): ở branch
+Chạy script khi đang đứng ở default branch (`main`; với gitlab-flow, sau lần chạy đầu thường là `develop`): ở branch
 khác, script dừng ngay trước khi ghi file và báo bạn cần chuyển branch, hoặc dùng
 `--no-commit` để tự commit. Nếu branch local khác `origin`, script bỏ qua bước commit và
 nói bạn cần làm gì. Cuối cùng nó in danh sách việc còn lại — luôn
@@ -134,7 +134,7 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 | `--ref <ref>` | `AGENT_TOOLKIT_REF` | Phiên bản toolkit để ghim (mặc định `v0`, xem §10) |
 | `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (mặc định), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (để trống mọi lệnh cho bạn tự điền) |
 | `--tools <k=v,...>` | `AGENT_TOOLKIT_TOOLS` | Ghi đè công cụ đã nhận diện, vd `test=vitest,format=none` (§3) |
-| `--branch-model <m>` | `AGENT_TOOLKIT_BRANCH_MODEL` | `gitlab-flow` hoặc `github-flow` (§7.1; mặc định: hỏi, `--yes` → `gitlab-flow`) |
+| `--branch-model <m>` | `AGENT_TOOLKIT_BRANCH_MODEL` | `github-flow` hoặc `gitlab-flow` (§7.1; mặc định: hỏi, `--yes` → `github-flow`) |
 | `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` hoặc `skip` |
 | | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Giá trị secret Claude |
 | `--app-id <id>` | `AGENT_APP_ID` | App ID của GitHub App |
@@ -152,7 +152,7 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 Mục đánh dấu ⚙ được lệnh cài làm tự động; cài tay thì làm theo mục tương ứng.
 
 - [ ] Repo có ít nhất một commit, lint/test chạy được trên máy (§1)
-- [ ] ⚙ File + nhãn + branch `develop` đã có (§2)
+- [ ] ⚙ File + nhãn (+ branch `develop` với gitlab-flow) đã có (§2)
 - [ ] Các khối `edit for your stack` khớp dự án trong `ci.yml`, `agent-implement.yml`, `agent-merge-gate.yml` (§3)
 - [ ] `CLAUDE.md` đã điền (§4)
 - [ ] ⚙ Secret Claude (+ App) đã thêm (§5)
@@ -170,7 +170,7 @@ Mục đánh dấu ⚙ được lệnh cài làm tự động; cài tay thì là
   git add -A && git commit -m "chore: initial commit" && git push -u origin HEAD
   ```
 
-  Bootstrap tạo `develop` từ default branch nên repo cần có ít nhất một commit.
+  Với gitlab-flow, bootstrap tạo `develop` từ default branch nên repo cần có ít nhất một commit.
 - Dự án nên có sẵn lệnh **lint**, **format check**, **test**, và nếu được thì **coverage**.
   Pipeline chỉ an toàn bằng bộ test của bạn: agent chỉ được merge khi CI xanh.
 - Nếu repo đã có `.github/workflows/ci.yml`, `CLAUDE.md`, issue template…: bootstrap
@@ -196,7 +196,7 @@ gọi nó rồi làm tiếp secret, settings và commit.
 |---|---|
 | `--stack <s>` | Điền sẵn lệnh cho stack: `auto` (mặc định, nhận diện từ file trong repo), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Các giá trị giống ví dụ ở §3.3. |
 | `--tools <k=v,...>` | Ghi đè từng công cụ đã nhận diện, vd `--tools test=vitest,format=none` (các khóa ở §3). `--detect-tools` in ra giá trị sẽ dùng rồi thoát. |
-| `--branch-model <m>` | `gitlab-flow` (mặc định) hoặc `github-flow` (§7.1): PR của agent, CI, review và Dependabot nhắm vào branch nào, và có cài `branch-sync.yml` không. |
+| `--branch-model <m>` | `github-flow` (mặc định) hoặc `gitlab-flow` (§7.1): PR của agent, CI, review và Dependabot nhắm vào branch nào, và có cài `branch-sync.yml` không. |
 | `--ref <ref>` | Ghim mọi `uses: kokoroou/agent-toolkit/...@<ref>`. Khuyến nghị `v0` (tag di động của bản 0.x hiện tại; `v1` khi toolkit lên 1.0.0). `main` = luôn mới nhất, chỉ dùng cho sandbox. Mặc định: `main`. |
 | `--force` | Ghi đè file đã có trong repo dự án. |
 | `--no-labels` | Không tạo nhãn / branch `develop` (khi chưa có `gh` hoặc đã tạo rồi). |
@@ -236,7 +236,7 @@ Bootstrap in danh sách `Kept existing`. Các file này thuộc về dự án: b
 
 - **`ci.yml` riêng**: có thể giữ CI cũ, nhưng workflow phải tên **`CI`** (merge gate và
   vòng fix tìm theo tên này), có `workflow_dispatch:` và chạy trên `pull_request` vào
-  branch tích hợp (`develop`, hoặc `main` với github-flow). Hoặc đổi `ci-workflow` / `workflows: [...]` trong caller cho khớp tên CI cũ.
+  branch tích hợp (`main`, hoặc `develop` với gitlab-flow). Hoặc đổi `ci-workflow` / `workflows: [...]` trong caller cho khớp tên CI cũ.
 - **`CLAUDE.md` có sẵn**: thêm các mục *Commands*, *Architecture*, *Do not touch* từ
   `/tmp/agent-toolkit/templates/CLAUDE.md`.
 - **Issue template riêng**: giữ được, nhưng template phải gắn nhãn `needs-triage` và nên
@@ -277,7 +277,7 @@ sinh lại đúng các lệnh đó (§10.3).
 | `lint-command`, `format-check-command` | Để trống = bỏ qua bước đó |
 | `test-command` | Chạy test. Để trống nếu `coverage-command` đã chạy test (tiết kiệm phút) |
 | `coverage-command` | **Dòng cuối stdout phải chứa số phần trăm** (vd `87.3` hoặc `87.3%`; lấy số cuối cùng trên dòng). Mọi output khác chuyển sang stderr bằng `>&2`. Để trống = không gate coverage |
-| `coverage-tolerance` | Cho phép giảm bao nhiêu điểm phần trăm so với `develop` (`"0"` = không được giảm) |
+| `coverage-tolerance` | Cho phép giảm bao nhiêu điểm phần trăm so với branch tích hợp (`"0"` = không được giảm) |
 | `enable-security`, `semgrep-config` | Semgrep (chỉ báo finding mới so với base) + Gitleaks |
 | `enable-pr-title-check` | Tiêu đề PR phải theo Conventional Commits |
 
@@ -304,7 +304,7 @@ Trong job `gate` của `agent-merge-gate.yml`:
 
 | Input | Ý nghĩa |
 |---|---|
-| `smoke-command` | Chạy trên `develop` ngay sau merge; fail → PR revert tự động. Để trống = bỏ qua. Bootstrap chỉ chạy smoke test mà dự án có (khóa `smoke`, §3); bộ lọc không khớp test nào sẽ fail và revert mọi lần merge |
+| `smoke-command` | Chạy trên branch tích hợp ngay sau merge; fail → PR revert tự động. Để trống = bỏ qua. Bootstrap chỉ chạy smoke test mà dự án có (khóa `smoke`, §3); bộ lọc không khớp test nào sẽ fail và revert mọi lần merge |
 | `required-statuses` | Mặc định `agent/review` (status do reviewer ghi) |
 | `required-checks` / `ignore-checks` | Tên check run bắt buộc / bỏ qua |
 | `block-labels` | Mặc định `needs-human,risk:high,do-not-merge,wip` |
@@ -382,8 +382,8 @@ bash -c '<coverage-command của bạn>' 2>/dev/null | tail -1   # vd: 84.61
 - `agent-triage.yml`: `max-rounds` (số vòng hỏi lại, 1–5, mặc định 5), `auto-implement-max-size`
   (`XS|S|M|L`, khi `AGENT_AUTO_BUILD=true`; lớn hơn thì chờ bạn).
 - `agent-usage-report.yml`: `minutes-budget`, `cost-budget-usd` theo ngân sách của bạn.
-- Branch tích hợp khác `develop`: đổi `base-branch`, `baseline-branch` và `branches:`
-  trong mọi caller cho khớp.
+- Branch tích hợp khác `main` / `develop` (§7.1): đổi `base-branch`, `baseline-branch` và
+  `branches:` trong mọi caller cho khớp.
 
 ## 4. Viết `CLAUDE.md`
 
@@ -453,14 +453,13 @@ tra checks và statuses.
 ## 7. Chọn default branch
 
 `workflow_run` (merge gate), `schedule` (triage quét định kỳ, usage report) và
-`workflow_dispatch` chỉ chạy **file workflow nằm trên default branch**. Chọn một:
+`workflow_dispatch` chỉ chạy **file workflow nằm trên default branch**. Với github-flow
+(mặc định) đó là `main`, không cần chọn gì. Với gitlab-flow, chọn một:
 
 | Cách | Làm gì | Ưu / nhược |
 |---|---|---|
 | **A. `develop` là default** (khuyến nghị) | *Settings → General → Default branch* → `develop` | Caller workflow sống ở đó; `Closes #N` tự đóng issue; `main` chỉ nhận merge tay khi release. PR thường của người khác cũng mặc định vào `develop` |
 | **B. Giữ `main` là default** | Commit caller vào `main`, và mỗi lần sửa workflow phải merge sang `main` | Không đổi thói quen, nhưng dễ quên đồng bộ — workflow trên `develop` khác `main` sẽ gây hành vi khó hiểu |
-
-Với github-flow không có `develop`: `main` là default branch.
 
 ### 7.1 Mô hình nhánh: gitlab-flow hay github-flow
 
@@ -469,14 +468,16 @@ CI/CD dùng chung theo ngôn ngữ — lint, format, test, coverage, release-ple
 tuỳ chọn khi phát hành; dự án build cho người test và deploy thế nào, ở đâu là phần bạn
 tự viết (một workflow chạy khi `push` vào `develop` / `main`, hoặc khi `release: published`).
 
-| | **gitlab-flow** (mặc định) | **github-flow** |
+| | **github-flow** (mặc định) | **gitlab-flow** |
 |---|---|---|
-| Phù hợp | làm theo đội: dev test `develop`, QA test `main` | dự án một người: bạn vừa phát triển vừa test trên `main` |
-| PR của agent, baseline coverage của CI, review, Dependabot | vào `develop` | vào `main` |
-| Đưa code lên `main` | *Branch Sync* mở **PR promotion** `develop` → `main` mỗi khi `develop` có thay đổi mà `main` chưa có, và cập nhật danh sách commit; bạn merge sau khi test | PR nào đã merge thì đã nằm trên `main` |
+| Phù hợp | dự án một người: bạn vừa phát triển vừa test trên `main` | làm theo đội: dev test `develop`, QA test `main` |
+| PR của agent, baseline coverage của CI, review, Dependabot | vào `main` | vào `develop` |
+| Đưa code lên `main` | PR nào đã merge thì đã nằm trên `main` | *Branch Sync* mở **PR promotion** `develop` → `main` mỗi khi `develop` có thay đổi mà `main` chưa có, và cập nhật danh sách commit; bạn merge sau khi test |
 | Phát hành | PR release của release-please trên `main` → tag + GitHub Release | như bên trái |
-| Sau khi phát hành / hotfix trên `main` | *Branch Sync* merge `main` ngược về `develop` (fast-forward khi được) | — |
-| Default branch | `develop` (khuyến nghị, §7) | `main` |
+| Sau khi phát hành / hotfix trên `main` | — | *Branch Sync* merge `main` ngược về `develop` (fast-forward khi được) |
+| Default branch | `main` | `develop` (khuyến nghị, §7) |
+
+Dự án cài từ trước khi có mô hình nhánh là gitlab-flow; nâng cấp vẫn giữ nguyên như vậy.
 
 **Branch Sync** (`.github/workflows/branch-sync.yml`, chỉ có với gitlab-flow) chạy mỗi khi
 push vào `develop` hoặc `main`, sau khi CI trên hai branch đó chạy xong, và khi chạy tay
@@ -528,7 +529,7 @@ git switch <default-branch>
 git add .github CLAUDE.md
 git commit -m "ci: add agent-toolkit pipeline"
 git push
-git switch develop && git merge --ff-only <default-branch> && git push   # nếu dùng cách B
+git switch develop && git merge --ff-only <default-branch> && git push   # gitlab-flow, cách B
 ```
 
 Kiểm tra theo thứ tự:
@@ -536,15 +537,15 @@ Kiểm tra theo thứ tự:
 1. **Actions** tab: thấy các workflow `CI`, `Agent Triage`, `Agent Implement`,
    `Agent Review`, `Agent Merge Gate`, `Release`, `Agent Usage Report`. Không có file nào
    báo lỗi cú pháp (biểu tượng ⚠).
-2. Chạy CI tay: *Actions → CI → Run workflow* trên `develop` → phải xanh. Run này cũng
-   ghi baseline coverage cho `develop`.
+2. Chạy CI tay: *Actions → CI → Run workflow* trên branch tích hợp (`main`, hoặc `develop`
+   với gitlab-flow) → phải xanh. Run này cũng ghi baseline coverage cho branch đó.
 3. **Issues → New issue → Feature / change request** với một thay đổi nhỏ, rõ ràng, ví dụ:
    - Goal: "Thêm hàm `add(a, b)` trả về tổng hai số."
    - Constraints: "None"
    - Acceptance criteria: "- [ ] `add(2, 3)` trả về 5  - [ ] có unit test"
 4. Theo dõi: `Agent Triage` gắn `ready-for-plan` → `Agent Implement` mở PR
-   `agent/issue-N` → `CI` + `Agent Review` → `Agent Merge Gate` merge vào `develop` và
-   đóng issue. Thường mất 10–30 phút.
+   `agent/issue-N` → `CI` + `Agent Review` → `Agent Merge Gate` merge vào branch tích hợp
+   và đóng issue. Thường mất 10–30 phút.
 
 Nếu kẹt ở bước nào, xem [§12](#12-xử-lý-sự-cố).
 
@@ -594,8 +595,8 @@ Commit cả file `.md` và `.lock.yml` lên default branch.
 - Muốn đính kèm file build vào GitHub Release: bỏ comment `setup-command`,
   `build-command`, `artifact-paths`.
 
-Quy trình: merge PR promotion `develop` → `main` (gitlab-flow; với github-flow PR nào đã
-merge thì đã nằm trên `main`) → release-please mở PR "chore(main): release x.y.z" → review
+Quy trình: PR nào đã merge thì đã nằm trên `main` (với gitlab-flow: merge PR promotion
+`develop` → `main`) → release-please mở PR "chore(main): release x.y.z" → review
 CHANGELOG → merge → tag + GitHub Release (→ với gitlab-flow, Branch Sync merge commit phát
 hành ngược về `develop`). Commit phải theo Conventional
 Commits (`feat:` → minor, `fix:` → patch, `feat!:` → major); CI đã kiểm tiêu đề PR.

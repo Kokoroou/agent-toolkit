@@ -24,9 +24,9 @@
 #   --stack <s>             auto|node|pnpm|yarn|python|go|none      [AGENT_TOOLKIT_STACK, auto]
 #   --tools <k=v,...>       override detected tools, e.g. test=vitest,format=none
 #                           (keys: bootstrap.sh --help)             [AGENT_TOOLKIT_TOOLS]
-#   --branch-model <m>      gitlab-flow: develop → promotion PR → main → release;
-#                           github-flow: main → release (no develop)
-#                           [AGENT_TOOLKIT_BRANCH_MODEL, asked; --yes: gitlab-flow]
+#   --branch-model <m>      github-flow: main → release (no develop);
+#                           gitlab-flow: develop → promotion PR → main → release
+#                           [AGENT_TOOLKIT_BRANCH_MODEL, asked; --yes: github-flow]
 #                           switch later with scripts/switch-branch-model.sh
 #   --claude-auth <a>       oauth|api-key|skip                      [AGENT_TOOLKIT_CLAUDE_AUTH]
 #                           values: [CLAUDE_CODE_OAUTH_TOKEN] / [ANTHROPIC_API_KEY]
@@ -264,15 +264,17 @@ fi
 if grep -q -- '--branch-model' "$toolkit_dir/scripts/bootstrap.sh"; then
   if [[ -z "$branch_model" && "$interactive" == true ]]; then
     echo "  Branch model:"
-    echo "    gitlab-flow — agent PRs → develop (you test) → promotion PR → main (QA tests) → release"
     echo "    github-flow — agent PRs → main (you test) → release; no develop branch"
-    ask branch_model "Branch model (gitlab-flow|github-flow)" gitlab-flow
+    echo "    gitlab-flow — agent PRs → develop (you test) → promotion PR → main (QA tests) → release"
+    ask branch_model "Branch model (github-flow|gitlab-flow)" github-flow
     case "$branch_model" in gitlab-flow|github-flow) ;; *) die "unknown branch model '$branch_model'" ;; esac
   fi
 elif [[ "${branch_model:-gitlab-flow}" != gitlab-flow ]]; then
   die "toolkit $ref has no branch models (only gitlab-flow) — use a newer --ref"
+else
+  branch_model=gitlab-flow # all an older toolkit installs
 fi
-branch_model="${branch_model:-gitlab-flow}"
+branch_model="${branch_model:-github-flow}"
 
 # Files the project already has are kept (skipped) by default; ask once whether to
 # overwrite them instead.

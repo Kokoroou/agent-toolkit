@@ -51,7 +51,7 @@ Repo đã có sẵn `ci.yml` hoặc issue template: script giữ file của bạ
 2. Triage gắn nhãn; nếu thiếu thông tin thì hỏi lại (tối đa 5 vòng) — trả lời bằng comment.
 3. Khi issue có `ready-for-plan`, trong Claude Code trên dự án (máy bạn hoặc web):
    `/pipeline:build N` (hoặc nói "thi công issue N"). Xác nhận khi được hỏi push.
-4. CI + reviewer chạy trên PR; merge gate tự squash-merge vào `develop` khi xanh.
+4. CI + reviewer chạy trên PR; merge gate tự squash-merge vào `main` (`develop` với gitlab-flow) khi xanh.
 
 ### UC-4. Làm dần backlog
 
@@ -117,8 +117,9 @@ trong environment, **không** đưa credential storage nào vào →
 
 ### UC-14. Phát hành một phiên bản
 
-Merge PR promotion `develop` → `main` mà Branch Sync luôn giữ mở (bằng merge commit; với
-github-flow bỏ qua bước này). release-please mở release PR; merge PR đó → tag,
+Với gitlab-flow, trước tiên merge PR promotion `develop` → `main` mà Branch Sync luôn giữ
+mở (bằng merge commit); với github-flow (mặc định) thay đổi đã nằm sẵn trên `main`.
+release-please mở release PR; merge PR đó → tag,
 CHANGELOG, GitHub Release → [ADD-TO-PROJECT §9.4](ADD-TO-PROJECT.vi.md#94-release).
 
 ### UC-15. Theo dõi chi phí
@@ -174,6 +175,7 @@ không có App thì toolkit phải dispatch CI riêng và check không hiện tr
 
 #### Vì sao nên để `develop` làm default branch?
 
+Chỉ áp dụng cho gitlab-flow; với github-flow `main` là default branch.
 `workflow_run`, `schedule` và `workflow_dispatch` chỉ đọc workflow trên default branch.
 Để `main` làm default cũng được nhưng phải nhớ đồng bộ workflow sang `main` →
 [ADD-TO-PROJECT §7](ADD-TO-PROJECT.vi.md#7-chọn-default-branch).
