@@ -3,10 +3,11 @@
 #   irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) --stack python --ref v0
 #   & ([scriptblock]::Create((irm .../scripts/install.ps1))) upgrade --to v1   # scripts/upgrade.sh
+#   & ([scriptblock]::Create((irm .../scripts/install.ps1))) switch-branch-model github-flow
 #
 # Installs Git for Windows and the GitHub CLI with winget when they are missing, then runs
-# scripts/install.sh (or, with `upgrade` first, scripts/upgrade.sh) with Git Bash in the
-# current directory. Arguments and environment variables are the same as that script's
+# scripts/install.sh (or, with `upgrade` / `switch-branch-model` first, that script) with
+# Git Bash in the current directory. Arguments and environment variables are the same as that script's
 # (see `--help`).
 
 # Wrapped in a script block so `irm | iex` leaves no variables or preferences behind.
@@ -40,11 +41,11 @@
     Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $bash) { throw "Git Bash not found next to $((Get-Command git).Source) - reinstall Git for Windows." }
 
-  # First argument `upgrade` runs upgrade.sh instead of install.sh.
+  # First argument `upgrade` / `switch-branch-model` runs that script instead of install.sh.
   $name = 'install.sh'
   $rest = @($args)
-  if ($rest.Count -gt 0 -and $rest[0] -eq 'upgrade') {
-    $name = 'upgrade.sh'
+  if ($rest.Count -gt 0 -and $rest[0] -in @('upgrade', 'switch-branch-model')) {
+    $name = "$($rest[0]).sh"
     $rest = @($rest | Select-Object -Skip 1)
   }
 

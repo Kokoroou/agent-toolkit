@@ -56,8 +56,10 @@ issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implemen
 - The **merge gate** squash-merges green PRs into `develop`; on a red PR it comments with
   `/pipeline:build pr P` for you to run (with `AGENT_AUTO_BUILD=true` it sends the PR back
   to the build agent on Actions instead, up to 3 times, then stops with `needs-human`).
-- You merge `develop` → `main` yourself; release-please creates the version, CHANGELOG and
-  GitHub Release.
+- *Branch Sync* keeps a promotion PR `develop` → `main` open; you merge it after testing,
+  release-please creates the version, CHANGELOG and GitHub Release, and `main` is merged
+  back into `develop`. (Solo project? Pick github-flow: PRs go straight to `main` —
+  [ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.md#71-branch-model-gitlab-flow-or-github-flow).)
 
 A project repo only keeps a few thin YAML files calling into the toolkit
 (`uses: kokoroou/agent-toolkit/...@v0`), so all the logic is updated from one place.
@@ -277,7 +279,7 @@ already Node + Jest, so the commands need almost no changes).
 | Red PR | Push a commit that breaks a test onto the agent branch | Merge gate comments `/pipeline:build pr P`; run it → the fix is pushed. With `AGENT_AUTO_BUILD=true`: `fix` → the agent commits a fix; after 3 times → `needs-human` |
 | High-risk PR | Add the `risk:high` label to an agent PR | The merge gate returns `blocked`, no merge |
 | Smoke fails after merge | Set `smoke-command: "false"` in `agent-merge-gate.yml` | After the merge a `revert/pr-N` PR appears with `needs-human` |
-| Release | Open a `develop` → `main` PR and merge it | release-please opens a release PR; merging it → tag + GitHub Release |
+| Release | Merge the promotion PR `develop` → `main` (merge commit) | release-please opens a release PR; merging it → tag + GitHub Release; Branch Sync merges it back into `develop` |
 
 ### 8.3 See what the agent did
 

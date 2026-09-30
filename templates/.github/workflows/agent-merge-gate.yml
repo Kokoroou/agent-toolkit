@@ -1,4 +1,4 @@
-# Runs after CI or Agent Review finishes. Merges green agent PRs into develop. A failed
+# Runs after CI or Agent Review finishes. Merges green agent PRs into base-branch. A failed
 # one gets a comment asking you to fix it in Claude Code (`/pipeline:build pr <n>`); with
 # the repository variable AGENT_AUTO_BUILD=true it goes back to the build agent on GitHub
 # Actions instead (circuit breaker in implement.yml).

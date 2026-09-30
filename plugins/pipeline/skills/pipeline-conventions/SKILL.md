@@ -28,11 +28,19 @@ your final summary which commands you inferred.
 
 ## 2. Branching model
 
+The project uses one of two models (`branch-model=` in `.github/agent-toolkit.lock`):
+**gitlab-flow** (default: `develop` is the integration branch and `main` the release
+branch) or **github-flow** (no `develop`: `main` is both). The integration branch is the
+`base-branch` of the caller workflows.
+
 | Branch            | Who writes it                | Notes                                          |
 |-------------------|------------------------------|------------------------------------------------|
 | `agent/issue-<n>` | implementer sub-agent        | one branch per issue, created by the workflow or `/pipeline:build` |
-| `develop`         | merge gate (squash merge)    | integration branch, auto-merged when CI passes |
-| `main`            | a human (`develop` → `main`) | release-please tags and builds from here       |
+| `develop`         | merge gate (squash merge)    | gitlab-flow: integration branch, auto-merged when CI passes |
+| `main`            | a human merging the promotion PR `develop` → `main` (gitlab-flow), or the merge gate (github-flow) | release-please tags and builds from here |
+
+In gitlab-flow, *Branch Sync* opens the promotion PR and merges `main` back into
+`develop` after a release or hotfix.
 
 Never push, rebase or force-push yourself; the workflow commits nothing for you but
 pushes what you committed. The one exception is the `build` skill in an interactive
@@ -57,7 +65,7 @@ The PR body must contain `Closes #<issue>`.
   no reformatting untouched files, no dependency upgrades unless asked.
 - Match surrounding code: naming, error handling, comment density, file layout.
 - Every behaviour change ships with a test that fails before and passes after.
-- Coverage must not go down compared to `develop` (CI enforces it).
+- Coverage must not go down compared to the integration branch (CI enforces it).
 - Never commit secrets, `.env` files, credentials, generated build output or large
   binaries. Never weaken lint rules, skip/disable tests or lower coverage thresholds
   to get green.

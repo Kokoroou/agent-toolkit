@@ -57,12 +57,13 @@ CLI with `winget` if missing, then runs that same script under Git Bash) does, i
 | Step | What it does | Matching section |
 |---|---|---|
 | 1 | Checks `git`, `gh` (offers to install if missing) and `gh auth login` | GETTING-STARTED §3 |
-| 2 | Detects the stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go) and the linter, formatter and test runner the project uses, copies the templates with the matching commands, creates labels and the `develop` branch | §2, §3 |
+| 2 | Detects the stack (`package.json` + lockfile → node/pnpm/yarn, `pyproject.toml`/`requirements.txt` → python, `go.mod` → go) and the linter, formatter and test runner the project uses, copies the templates with the matching commands and the branch model, creates labels and (gitlab-flow) the `develop` branch | §2, §3, §7.1 |
 | 3 | Sets secrets: Claude token, App ID + private key, `PROJECT_TOKEN` | §5 |
 | 4 | Enables *Workflow permissions* (read/write + create PRs), squash merge, delete branch after merge, Dependabot alerts | §6 |
-| 5 | Commits `.github/` + `CLAUDE.md`, pushes to the default branch and `develop`, makes `develop` the default branch | §7, §8 |
+| 5 | Commits `.github/` + `CLAUDE.md`, pushes to the default branch (and `develop`), makes `develop` the default branch (gitlab-flow) | §7, §8 |
 
-It only asks for what is missing: the stack (Enter accepts the detected value), how to
+It only asks for what is missing: the stack (Enter accepts the detected value), the
+branch model (§7.1, Enter = gitlab-flow), how to
 sign in to Claude and the token (hidden input; the script can run `claude setup-token` for
 you), the App ID and `.pem` path (it guesses the newest file in `~/Downloads`), and whether
 to commit / change the default branch. Secrets already in the repo are kept unless you
@@ -139,12 +140,13 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '...'
 | `--ref <ref>` | `AGENT_TOOLKIT_REF` | Toolkit version to pin (default `v0`, see §10) |
 | `--stack <s>` | `AGENT_TOOLKIT_STACK` | `auto` (default), `node`, `pnpm`, `yarn`, `python`, `go`, `none` (all commands left empty for you to fill in) |
 | `--tools <k=v,...>` | `AGENT_TOOLKIT_TOOLS` | Override detected tools, e.g. `test=vitest,format=none` (§3) |
+| `--branch-model <m>` | `AGENT_TOOLKIT_BRANCH_MODEL` | `gitlab-flow` or `github-flow` (§7.1; default: ask, `--yes` → `gitlab-flow`) |
 | `--claude-auth <a>` | `AGENT_TOOLKIT_CLAUDE_AUTH` | `oauth`, `api-key` or `skip` |
 | | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | Claude secret value |
 | `--app-id <id>` | `AGENT_APP_ID` | GitHub App ID |
 | `--app-key <file>` | `AGENT_APP_PRIVATE_KEY_FILE` (or the content: `AGENT_APP_PRIVATE_KEY`) | `.pem` private key |
 | `--project-owner`, `--project-number` | `PROJECT_OWNER`, `PROJECT_NUMBER`, `PROJECT_TOKEN` | GitHub Projects (§9.1) |
-| `--default-develop` / `--keep-default` | | Change / keep the default branch (default: ask, `--yes` → change) |
+| `--default-develop` / `--keep-default` | | gitlab-flow: change / keep the default branch (default: ask, `--yes` → change) |
 | `--commit` / `--no-commit` | | Commit + push, or leave it to you (default: ask, `--yes` → commit) |
 | `--skip-secrets`, `--skip-settings`, `--no-labels`, `--force` | | Skip each part; `--force` overwrites existing files (without it the installer lists them and asks — default: keep them) |
 | `-y`, `--yes` | | Ask nothing; missing secrets are skipped and reported at the end |
@@ -196,13 +198,14 @@ cd ~/code/my-project && gh auth status          # gh must be signed in, with rep
 /tmp/agent-toolkit/scripts/bootstrap.sh ~/code/my-project --ref v0
 ```
 
-`bootstrap.sh` only handles files + labels + `develop`; [`install.sh`](#one-command-install)
+`bootstrap.sh` only handles files + labels + `develop` (gitlab-flow); [`install.sh`](#one-command-install)
 calls it and then continues with secrets, settings and the commit.
 
 | Option | Meaning |
 |---|---|
 | `--stack <s>` | Pre-fill commands for a stack: `auto` (default, detected from repo files), `node`, `pnpm`, `yarn`, `python`, `go`, `none`. Values match the examples in §3.3. |
 | `--tools <k=v,...>` | Override single detected tools, e.g. `--tools test=vitest,format=none` (keys in §3). `--detect-tools` prints what would be used and exits. |
+| `--branch-model <m>` | `gitlab-flow` (default) or `github-flow` (§7.1): which branch agent PRs, CI, review and Dependabot target, and whether `branch-sync.yml` is installed. |
 | `--ref <ref>` | Pin every `uses: kokoroou/agent-toolkit/...@<ref>`. Recommended: `v0` (moving tag of the current 0.x release; `v1` once the toolkit reaches 1.0.0). `main` = always latest, sandbox only. Default: `main`. |
 | `--force` | Overwrite existing files in the project repo. |
 | `--no-labels` | Do not create labels / the `develop` branch (when `gh` is unavailable or they already exist). |
@@ -219,10 +222,11 @@ calls it and then continues with secrets, settings and the commit.
    | `.github/workflows/agent-review.yml` | Review PRs labeled `agent` (named `Agent Review`) |
    | `.github/workflows/agent-merge-gate.yml` | Runs after `CI`/`Agent Review`: merge, ask for a fix (`/pipeline:build pr P`, or the Actions build agent with `AGENT_AUTO_BUILD=true`), or block |
    | `.github/workflows/release.yml` | release-please on push to `main` |
+   | `.github/workflows/branch-sync.yml` | gitlab-flow only: promotion PR `develop` → `main`, merges `main` back into `develop` (§7.1) |
    | `.github/workflows/agent-usage-report.yml` | Weekly Actions minutes + Claude cost report |
    | `.github/ISSUE_TEMPLATE/{feature,bug,config}.yml` | Structured issue templates, blank issues disabled |
    | `.github/pull_request_template.md` | PR template |
-   | `.github/dependabot.yml` | Dependency updates, PRs into `develop` |
+   | `.github/dependabot.yml` | Dependency updates, PRs into the integration branch |
    | `CLAUDE.md` | Project guidance skeleton for the agents |
 
 2. Replaces `@main` in the `uses:` lines, and `#main` / `"ref": "main"` of the plugin
@@ -230,8 +234,8 @@ calls it and then continues with secrets, settings and the commit.
    `--stack` and the detected tools (§3) in the `edit for your stack` blocks,
    `dependabot.yml`, `release.yml` and the *Commands* section of `CLAUDE.md`.
 3. Creates ~24 labels (`needs-triage`, `agent`, `risk:high`, `size:M`…) — safe to re-run.
-4. Creates the `develop` branch from the default branch if missing.
-5. Writes `.github/agent-toolkit.lock` (toolkit version, stack, tools, list of files it manages)
+4. gitlab-flow: creates the `develop` branch from the default branch if missing.
+5. Writes `.github/agent-toolkit.lock` (toolkit version, stack, tools, branch model, list of files it manages)
    so `upgrade.sh` can upgrade later (§10).
 
 ### 2.3 Repo with existing files
@@ -241,7 +245,7 @@ Bootstrap prints a `Kept existing` list. Those files belong to the project: boot
 
 - **Your own `ci.yml`**: you can keep your CI, but the workflow must be named **`CI`**
   (the merge gate and fix loop look it up by that name), have `workflow_dispatch:` and run
-  on `pull_request` into `develop`. Or change `ci-workflow` / `workflows: [...]` in the
+  on `pull_request` into the integration branch (`develop`, or `main` with github-flow). Or change `ci-workflow` / `workflows: [...]` in the
   callers to match your CI's name.
 - **Existing `CLAUDE.md`**: add the *Commands*, *Architecture*, *Do not touch* sections
   from `/tmp/agent-toolkit/templates/CLAUDE.md`.
@@ -470,6 +474,69 @@ checks checks and statuses itself.
 | **A. `develop` as default** (recommended) | *Settings → General → Default branch* → `develop` | The callers live there; `Closes #N` closes issues automatically; `main` only receives manual release merges. Other people's PRs also target `develop` by default |
 | **B. Keep `main` as default** | Commit the callers to `main`, and merge every workflow change into `main` | No habit change, but easy to forget to sync — workflows differing between `develop` and `main` cause confusing behavior |
 
+With github-flow there is no `develop`: `main` is the default branch.
+
+### 7.1 Branch model: gitlab-flow or github-flow
+
+The toolkit supports two standard models (search for them by these names). It only ships
+the shared CI/CD per language — lint, format, test, coverage, release-please and an
+optional release build; how and where your project builds for testers and deploys is
+yours to write (a workflow on `push` to `develop` / `main`, or on `release: published`).
+
+| | **gitlab-flow** (default) | **github-flow** |
+|---|---|---|
+| Fits | a team: developers test `develop`, QA tests `main` | a solo project: you develop and test on `main` |
+| Agent PRs, CI coverage baseline, review, Dependabot | into `develop` | into `main` |
+| Getting to `main` | *Branch Sync* opens a **promotion PR** `develop` → `main` whenever `develop` has changes `main` lacks, and keeps its commit list current; you merge it after testing | every merged PR is already on `main` |
+| Release | release-please release PR on `main` → tag + GitHub Release | same |
+| After a release / hotfix on `main` | *Branch Sync* merges `main` back into `develop` (fast-forward when possible) | — |
+| Default branch | `develop` (recommended, §7) | `main` |
+
+**Branch Sync** (`.github/workflows/branch-sync.yml`, gitlab-flow only) runs on every push
+to `develop` or `main`, after CI on them, and by hand (*Actions → Branch Sync → Run
+workflow*). Both of its checks compare file contents, not commits, so the merge commits
+the two directions leave behind never open a PR; when both branches are in step it does
+nothing. Rules to know:
+
+- Merge the promotion PR with **Create a merge commit**, not squash: release-please reads
+  every Conventional Commit on `main` to build the changelog, and `develop` stays an
+  ancestor of `main`. The promotion PR carries no `agent` label, so the merge gate never
+  merges it — it is your QA gate.
+- When `main` cannot be merged into `develop` automatically — a conflict, or a push the
+  token may not make (a change under `.github/workflows/` needs an App with the
+  *Workflows* permission, [GETTING-STARTED §5.1](GETTING-STARTED.md#51-create-the-app)) —
+  it opens a **sync PR** `main` → `develop` instead. Resolve a conflict locally
+  (`git switch develop && git merge origin/main`, then push), not in the web editor, which
+  would commit into `main`.
+- With a GitHub App, its PRs and pushes start CI; with `GITHUB_TOKEN` only, the back-sync
+  dispatches CI on `develop` itself and PRs get CI on their next push.
+
+**Switch** at any time, from a clean checkout of `main`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/switch-branch-model.sh \
+  | bash -s -- github-flow        # or: gitlab-flow
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1))) switch-branch-model github-flow
+```
+
+It rewrites the toolkit files through `upgrade.sh --branch-model` (your own edits are
+kept by the same 3-way merge as §10.3; the files are also brought up to the ref in the
+lock), commits and pushes them to `main`, then does the GitHub side:
+
+- **→ github-flow**: refuses while `develop` has changes `main` lacks (merge the promotion
+  PR first); makes `main` the default branch; asks whether to delete `develop`
+  (`--delete-develop`; `--yes` keeps it).
+- **→ gitlab-flow**: creates `develop` from `main` (an existing `develop` is caught up by
+  Branch Sync); asks whether to make it the default branch (`--default-branch` /
+  `--keep-default`).
+
+`--dry-run` shows the file diffs and the planned GitHub steps without changing anything;
+`--help` lists every option. Every step is skipped once done, so after resolving an
+upgrade conflict you commit and run the same command again.
+
 ## 8. Commit and verify
 
 ```bash
@@ -543,8 +610,10 @@ Commit both the `.md` and the `.lock.yml` files to the default branch.
 - To attach build output to the GitHub Release: uncomment `setup-command`,
   `build-command`, `artifact-paths`.
 
-Flow: merge `develop` → `main` (manual PR) → release-please opens a
-"chore(main): release x.y.z" PR → review the CHANGELOG → merge → tag + GitHub Release.
+Flow: merge the promotion PR `develop` → `main` (gitlab-flow; with github-flow every
+merged PR is already on `main`) → release-please opens a "chore(main): release x.y.z" PR →
+review the CHANGELOG → merge → tag + GitHub Release (→ with gitlab-flow, Branch Sync
+merges the release commit back into `develop`).
 Commits must follow Conventional Commits (`feat:` → minor, `fix:` → patch, `feat!:` →
 major); CI already checks PR titles.
 Entries with the same message in the same section (one change reaching `main` through
@@ -667,6 +736,8 @@ new version placed next to them as `<file>.upstream` — merge by hand, then del
 | Block an agent PR | Add `do-not-merge` (or `risk:high`) |
 | Have the agent review a human PR | Add the `agent` label to the PR (the PR becomes eligible for auto-merge!) |
 | Resume after `needs-human` on a PR | Fix and push yourself, remove the label; the merge gate reruns when CI finishes |
+| Hand `develop` to QA (gitlab-flow) | Test `develop`, then merge the promotion PR `develop` → `main` (merge commit) that Branch Sync keeps open |
+| Switch between gitlab-flow and github-flow | `scripts/switch-branch-model.sh <model>` (§7.1) |
 | See costs | The `pipeline-usage` issue, or each run's Step Summary |
 
 ## 12. Troubleshooting

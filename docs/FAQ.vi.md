@@ -117,7 +117,8 @@ trong environment, **không** đưa credential storage nào vào →
 
 ### UC-14. Phát hành một phiên bản
 
-Mở PR `develop` → `main` và tự merge. release-please mở release PR; merge PR đó → tag,
+Merge PR promotion `develop` → `main` mà Branch Sync luôn giữ mở (bằng merge commit; với
+github-flow bỏ qua bước này). release-please mở release PR; merge PR đó → tag,
 CHANGELOG, GitHub Release → [ADD-TO-PROJECT §9.4](ADD-TO-PROJECT.vi.md#94-release).
 
 ### UC-15. Theo dõi chi phí

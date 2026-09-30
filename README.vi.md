@@ -22,6 +22,14 @@ issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implem
             └─ hỏi lại ≤5 vòng                                               └─ fix ──────────┴─ fail → needs-human / revert
 ```
 
+Có hai mô hình nhánh, đổi qua lại bất cứ lúc nào bằng `scripts/switch-branch-model.sh`
+([ADD-TO-PROJECT §7.1](docs/ADD-TO-PROJECT.vi.md#71-mô-hình-nhánh-gitlab-flow-hay-github-flow)):
+**gitlab-flow** (như trên: `develop` để đội dev test, PR promotion `develop` → `main` tự
+động mở để QA test, `main` được đồng bộ ngược về `develop` sau mỗi lần phát hành) hoặc
+**github-flow** (PR của agent vào thẳng `main`, cho dự án một người). Toolkit chỉ cung cấp
+CI/CD dùng chung theo ngôn ngữ (lint, format, test, coverage, release-please); cách dự án
+build và deploy là phần bạn tự viết.
+
 ## Bắt đầu trong 3 bước
 
 1. **Chuẩn bị một lần** (~15 phút): token Claude + GitHub App →
@@ -38,8 +46,8 @@ issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implem
    irm https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/install.ps1 | iex
    ```
 
-   Script tự nhận diện stack, chép workflow, tạo nhãn + branch `develop`, đặt secret, bật
-   settings và commit; chỉ hỏi những gì còn thiếu.
+   Script tự nhận diện stack, hỏi mô hình nhánh, chép workflow, tạo nhãn (+ branch
+   `develop` với gitlab-flow), đặt secret, bật settings và commit; chỉ hỏi những gì còn thiếu.
 3. **Điền `CLAUDE.md` rồi mở một issue nhỏ** để xem pipeline chạy hết vòng →
    [ADD-TO-PROJECT §8](docs/ADD-TO-PROJECT.vi.md#8-commit-và-kiểm-tra).
 
@@ -115,12 +123,14 @@ storage: `scripts/agent-session.sh run` → [AGENT-SESSION.md](docs/AGENT-SESSIO
 | [`.github/workflows/quality.yml`](.github/workflows/quality.yml) | CI: lint → format → test → coverage không giảm, tiêu đề PR, Semgrep + Gitleaks |
 | [`.github/workflows/merge-gate.yml`](.github/workflows/merge-gate.yml) | Cổng merge tự viết (thay branch protection), smoke test + revert |
 | [`.github/workflows/release.yml`](.github/workflows/release.yml) | release-please + build + upload artifact |
+| [`.github/workflows/branch-sync.yml`](.github/workflows/branch-sync.yml) | gitlab-flow: PR promotion `develop` → `main`, merge ngược `main` về `develop` |
 | [`.github/workflows/usage-report.yml`](.github/workflows/usage-report.yml) | Báo cáo phút Actions + chi phí Claude |
 | [`workflows/ci-doctor.md`](workflows/ci-doctor.md) | Workflow gh-aw: lỗi CI trên develop/main → issue |
 | [`templates/`](templates) | File chép vào repo dự án (caller workflow, issue template, nhãn, `CLAUDE.md`) |
 | [`scripts/install.sh`](scripts/install.sh), [`install.ps1`](scripts/install.ps1) | Cài pipeline vào một repo dự án bằng một lệnh (file, secret, settings, commit) |
 | [`scripts/upgrade.sh`](scripts/upgrade.sh) | Nâng cấp file đã chép trong repo dự án lên bản toolkit mới, giữ chỉnh sửa của bạn bằng 3-way merge |
-| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` mà `install.sh` dùng |
+| [`scripts/switch-branch-model.sh`](scripts/switch-branch-model.sh) | Chuyển dự án giữa gitlab-flow và github-flow (file, branch mặc định, `develop`) |
+| [`scripts/bootstrap.sh`](scripts/bootstrap.sh) | Phần chép file + nhãn + `develop` (gitlab-flow) mà `install.sh` dùng |
 | [`templates/scripts/agent-session.sh`](templates/scripts/agent-session.sh) | Chép vào dự án: `.env` mã hoá bằng age, storage qua rclone, phiên Claude có sandbox trên máy ([AGENT-SESSION.md](docs/AGENT-SESSION.vi.md)) |
 
 Một caller workflow trong repo dự án trông như sau (bản đầy đủ ở

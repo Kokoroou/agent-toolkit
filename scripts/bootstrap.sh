@@ -2,27 +2,33 @@
 # Install the agent pipeline into a project repository.
 #
 #   scripts/bootstrap.sh <path-to-project-checkout> [--ref v0] [--stack auto] [--tools k=v,...]
-#                        [--force] [--no-labels]
+#                        [--branch-model gitlab-flow|github-flow] [--force] [--no-labels]
 #
 # Copies the caller workflows, issue/PR templates, dependabot config and a CLAUDE.md
 # skeleton; pins every `uses: kokoroou/agent-toolkit/...@main` to --ref; fills in the
 # stack-specific commands (--stack auto|node|pnpm|yarn|python|go|none; auto detects from
 # the project's files) for the linter, formatter and test runner the project actually
 # uses (detected; --tools overrides single keys, e.g. --tools test=vitest,format=none);
-# creates the label taxonomy and the develop branch with gh. Existing files are kept
-# unless --force. Records the toolkit version, --stack, the tools and the copied files in
-# .github/agent-toolkit.lock for scripts/upgrade.sh. For the full one-command setup
-# (tools, secrets, repo settings, commit) use scripts/install.sh.
+# creates the label taxonomy (and, for gitlab-flow, the develop branch) with gh. The
+# branch model: gitlab-flow (default) = agent PRs → develop, promotion PR develop → main,
+# release from main, main synced back into develop (branch-sync.yml); github-flow = agent
+# PRs → main, release from main, no develop (scripts/switch-branch-model.sh switches).
+# Existing files are kept unless --force. Records the toolkit version, --stack, the
+# tools, the branch model and the copied files in .github/agent-toolkit.lock for
+# scripts/upgrade.sh. For the full one-command setup (tools, secrets, repo settings,
+# commit) use scripts/install.sh.
 set -euo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 target="" ref="main" stack="auto" tools_override="" force=false labels=true detect=""
+branch_model="gitlab-flow"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
     --stack) stack="$2"; shift 2 ;;
     --tools) tools_override+="${tools_override:+,}$2"; shift 2 ;; # repeatable; later keys win
+    --branch-model) branch_model="$2"; shift 2 ;;
     --force) force=true; shift ;;
     --no-labels) labels=false; shift ;;
     --detect-stack) detect=stack; shift ;; # print the detected stack and exit
@@ -32,6 +38,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$target" && -e "$target/.git" ]] || { echo "error: <path> must be a git checkout" >&2; usage 1; }
+case "$branch_model" in
+  gitlab-flow|github-flow) ;;
+  *) echo "error: unknown --branch-model '$branch_model' (gitlab-flow|github-flow)" >&2; exit 1 ;;
+esac
 
 toolkit="$(cd "$(dirname "$0")/.." && pwd)"
 src="$toolkit/templates"
@@ -271,6 +281,21 @@ preset() { # <stack>; reads $tools
   fi
 }
 
+# github-flow: everything targets main instead of develop, and there is nothing to sync.
+branch_model_rules() {
+  [[ "$branch_model" == github-flow ]] || return 0
+  printf '%s\t%s\t%s\n' \
+    .github/workflows/ci.yml "branches:" "[main]" \
+    .github/workflows/ci.yml "baseline-branch:" "main" \
+    .github/workflows/agent-implement.yml "base-branch:" "main" \
+    .github/workflows/agent-merge-gate.yml "base-branch:" "main" \
+    .github/workflows/agent-review.yml "branches:" "[main]" \
+    .github/dependabot.yml "target-branch:" "main"
+}
+model_skips() { # <relative path> — not installed for this branch model
+  [[ "$branch_model" == github-flow && "$1" == .github/workflows/branch-sync.yml ]]
+}
+
 apply_preset() { # <rules-file> <relative path> <file>
   awk -F'\t' -v rel="$2" '
     FILENAME == ARGV[1] { if ($1 == rel) { n++; pre[n] = $2; val[n] = $3 } next }
@@ -299,8 +324,9 @@ tools=$(detect_tools "$stack")
 tools=$(merge_tools "$tools" "$tools_override")
 if [[ "$detect" == tools ]]; then echo "$tools"; exit 0; fi
 rules=$(mktemp); trap 'rm -f "$rules"' EXIT
-preset "$stack" >"$rules"
+{ preset "$stack"; branch_model_rules; } >"$rules"
 echo "Stack: $stack${tools:+ ($tools)}"
+echo "Branch model: $branch_model"
 # Say which CI steps stay empty, so nobody mistakes a skipped step for a passing one.
 case "$stack" in
   node|pnpm|yarn|python)
@@ -329,6 +355,7 @@ copied=() skipped=()
 while IFS= read -r -d '' f; do
   rel="${f#"$src"/}"
   [[ "$rel" == ".github/labels.json" ]] && continue
+  model_skips "$rel" && continue
   dst="$target/$rel"
   if [[ -e "$dst" && "$force" != true ]]; then skipped+=("$rel"); continue; fi
   mkdir -p "$(dirname "$dst")"
@@ -370,11 +397,12 @@ lock="$target/.github/agent-toolkit.lock"
     echo "commit=$commit"
     echo "stack=$stack"
     echo "tools=$tools"
+    echo "branch-model=$branch_model"
   fi
   for f in ${copied[@]+"${copied[@]}"}; do [[ "$f" == CLAUDE.md ]] || echo "managed=$f"; done
 } | awk '!/^managed=/ || !seen[$0]++' >"$lock.tmp" && mv "$lock.tmp" "$lock"
 
-# ── labels + develop branch ─────────────────────────────────────────────────────
+# ── labels + develop branch (gitlab-flow) ───────────────────────────────────────
 gh_at_least() { # <major> <minor> — true if the installed gh is at least that version
   [[ "$(gh --version 2>/dev/null)" =~ ([0-9]+)\.([0-9]+) ]] || return 1
   (( BASH_REMATCH[1] > $1 || (BASH_REMATCH[1] == $1 && BASH_REMATCH[2] >= $2) ))
@@ -395,7 +423,7 @@ if [[ "$labels" == true ]] && command -v gh >/dev/null; then
     fi
   done
   default=$(gh repo view "$repo" --json defaultBranchRef --jq .defaultBranchRef.name)
-  if ! gh api "repos/$repo/branches/develop" >/dev/null 2>&1; then
+  if [[ "$branch_model" == gitlab-flow ]] && ! gh api "repos/$repo/branches/develop" >/dev/null 2>&1; then
     sha=$(gh api "repos/$repo/git/ref/heads/$default" --jq .object.sha)
     gh api "repos/$repo/git/refs" -f ref=refs/heads/develop -f sha="$sha" >/dev/null
     echo "Created branch develop from $default"

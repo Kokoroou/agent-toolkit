@@ -1,0 +1,193 @@
+# Reusable: keep `develop` and `main` in step (the gitlab-flow branch model).
+#
+# Every run checks both directions; each check is idempotent, so the caller can run it
+# on any push to either branch, after CI on them, or by hand:
+#
+#   promote   – `develop` has changes `main` lacks → open (or refresh) the promotion PR
+#               develop → main, listing the new commits. It is merged by a person: that
+#               is the QA gate. `main` already has everything → close a leftover PR.
+#   back-sync – `main` has changes `develop` lacks (a release commit from release-please,
+#               a hotfix) → fast-forward or merge `main` into `develop` and push. When
+#               that fails (conflict, a push the token may not make, e.g. one touching
+#               .github/workflows without the Workflows permission) → open a sync PR
+#               main → develop instead, for a person to finish.
+#
+# "Has changes" compares trees, not commits: merge commits that change nothing (the ones
+# the two directions leave behind) never open a PR.
+#
+# Caller example: templates/.github/workflows/branch-sync.yml
+name: branch-sync
+
+on:
+  workflow_call:
+    inputs:
+      develop-branch:
+        type: string
+        default: develop
+      main-branch:
+        type: string
+        default: main
+      promote:
+        description: Open/refresh the promotion PR develop → main.
+        type: boolean
+        default: true
+      back-sync:
+        description: Merge main back into develop.
+        type: boolean
+        default: true
+      ci-dispatch-workflow:
+        description: CI workflow file to dispatch on develop after a back-sync pushed with GITHUB_TOKEN (such a push starts no workflow).
+        type: string
+        default: ""
+    secrets:
+      agent_app_id:
+        description: Optional — with an App token the PRs and the push also trigger CI.
+        required: false
+      agent_app_private_key:
+        required: false
+    outputs:
+      promote-pr:
+        value: ${{ jobs.sync.outputs.promote-pr }}
+      back-sync:
+        value: ${{ jobs.sync.outputs.back-sync }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    outputs:
+      promote-pr: ${{ steps.sync.outputs.promote_pr }}
+      back-sync: ${{ steps.sync.outputs.back_sync }}
+    env:
+      HAS_APP: ${{ secrets.agent_app_id != '' }}
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.agent_app_id }}
+          private-key: ${{ secrets.agent_app_private_key }}
+          # Scoped token: only what this job needs, not every permission of the App.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-actions: write
+
+      # Only the two long-lived branches are read; no PR code is ever checked out.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Sync branches
+        id: sync
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          DEVELOP: ${{ inputs.develop-branch }}
+          MAIN: ${{ inputs.main-branch }}
+          PROMOTE: ${{ inputs.promote }}
+          BACK_SYNC: ${{ inputs.back-sync }}
+          DISPATCH: ${{ inputs.ci-dispatch-workflow }}
+        run: |
+          set -euo pipefail
+          R="$GITHUB_REPOSITORY"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git fetch -q origin "+refs/heads/$MAIN:refs/remotes/origin/$MAIN" \
+                                   "+refs/heads/$DEVELOP:refs/remotes/origin/$DEVELOP"; then
+            echo "::notice::'$MAIN' or '$DEVELOP' does not exist — nothing to sync"
+            exit 0
+          fi
+          m="origin/$MAIN" d="origin/$DEVELOP"
+
+          # <from> <into>: true if merging <from> into <into> would change <into>'s files.
+          brings_changes() {
+            local t
+            git merge-base --is-ancestor "$1" "$2" && return 1
+            t=$(git merge-tree --write-tree "$2" "$1") || return 0 # conflict: it has changes
+            [[ "${t%%$'\n'*}" != "$(git rev-parse "$2^{tree}")" ]]
+          }
+          open_pr() { # <head> <base> → number of the open PR, or nothing
+            gh pr list --repo "$R" --head "$1" --base "$2" --state open --json number --jq '.[0].number // empty'
+          }
+          upsert_pr() { # <head> <base> <title> <body file> → PR number
+            local pr
+            pr=$(open_pr "$1" "$2")
+            if [[ -n "$pr" ]]; then
+              gh pr edit "$pr" --repo "$R" --body-file "$4" >/dev/null
+            else
+              gh pr create --repo "$R" --head "$1" --base "$2" --title "$3" --body-file "$4" >/dev/null
+              pr=$(open_pr "$1" "$2")
+            fi
+            echo "$pr"
+          }
+          commits() { # <from> <to> — the commits a PR <from>..<to> brings, newest first
+            git log --no-merges --format='- %s (%h)' "$1..$2" | head -n 100
+          }
+
+          # ── back-sync main → develop (first, so a release is on develop before promoting)
+          back_sync=none
+          if [[ "$BACK_SYNC" == true ]] && brings_changes "$m" "$d"; then
+            reason=""
+            git switch -q --detach "$d"
+            if git merge -q --no-edit -m "chore: sync $MAIN into $DEVELOP" "$m"; then
+              if git push -q "https://x-access-token:${GH_TOKEN}@github.com/${R}.git" "HEAD:refs/heads/$DEVELOP"; then
+                back_sync=pushed
+                echo "::notice::merged $MAIN into $DEVELOP ($(git rev-parse --short HEAD))"
+                d=HEAD
+                if [[ "$HAS_APP" != true && -n "$DISPATCH" ]]; then
+                  gh workflow run "$DISPATCH" --repo "$R" --ref "$DEVELOP" || true
+                fi
+              else
+                reason="the push to \`$DEVELOP\` was rejected (it moved meanwhile, it is protected, or the change touches \`.github/workflows/\` and the token lacks the Workflows permission)"
+              fi
+            else
+              git merge --abort
+              reason="\`$MAIN\` and \`$DEVELOP\` conflict"
+            fi
+            if [[ -n "$reason" ]]; then
+              body=$(mktemp)
+              {
+                echo "Automated by agent-toolkit branch-sync: \`$MAIN\` has changes \`$DEVELOP\` lacks, and $reason."
+                echo
+                echo "Merge with **Create a merge commit** (not squash or rebase), so \`$DEVELOP\` keeps \`$MAIN\`'s history and tags. On a conflict, resolve it locally — not in the web editor, which would commit into \`$MAIN\`:"
+                echo
+                echo '```bash'
+                echo "git switch $DEVELOP && git pull && git merge origin/$MAIN   # resolve, commit"
+                echo "git push                                                    # closes this PR"
+                echo '```'
+                echo
+                echo "### Commits"
+                commits "$d" "$m"
+              } >"$body"
+              pr=$(upsert_pr "$MAIN" "$DEVELOP" "chore: sync $MAIN into $DEVELOP" "$body")
+              back_sync="pr-$pr"
+              echo "::warning::could not merge $MAIN into $DEVELOP automatically — PR #$pr"
+            fi
+          fi
+          echo "back_sync=$back_sync" >>"$GITHUB_OUTPUT"
+
+          # ── promote develop → main ─────────────────────────────────────────────────
+          [[ "$PROMOTE" == true ]] || exit 0
+          pr=$(open_pr "$DEVELOP" "$MAIN")
+          if brings_changes "$d" "$m"; then
+            body=$(mktemp)
+            {
+              echo "Automated by agent-toolkit branch-sync: \`$DEVELOP\` has changes \`$MAIN\` lacks. Refreshed on every change to either branch."
+              echo
+              echo "Test the \`$DEVELOP\` build, then merge with **Create a merge commit** (not squash or rebase): release-please reads each Conventional Commit on \`$MAIN\`, and \`$DEVELOP\` stays an ancestor of \`$MAIN\`."
+              echo
+              echo "### Commits"
+              commits "$m" "$d"
+            } >"$body"
+            pr=$(upsert_pr "$DEVELOP" "$MAIN" "chore: promote $DEVELOP to $MAIN" "$body")
+            echo "::notice::promotion PR #$pr"
+          elif [[ -n "$pr" ]]; then
+            gh pr close "$pr" --repo "$R" --comment "\`$MAIN\` already has every change on \`$DEVELOP\` — closing." >/dev/null
+            pr=""
+          fi
+          echo "promote_pr=$pr" >>"$GITHUB_OUTPUT"

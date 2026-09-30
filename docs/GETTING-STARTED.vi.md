@@ -56,7 +56,10 @@ issue ─▶ triage ─▶ (bạn: /pipeline:build) ─▶ planner ─▶ implem
 - **Merge gate** squash-merge PR xanh vào `develop`; PR đỏ được comment lệnh
   `/pipeline:build pr P` để bạn chạy (với `AGENT_AUTO_BUILD=true` thì PR được gửi lại build
   agent trên Actions, tối đa 3 lần, sau đó dừng với `needs-human`).
-- Bạn tự merge `develop` → `main`; release-please tạo version, CHANGELOG và GitHub Release.
+- *Branch Sync* luôn giữ một PR promotion `develop` → `main`; bạn merge nó sau khi test,
+  release-please tạo version, CHANGELOG và GitHub Release, và `main` được merge ngược về
+  `develop`. (Dự án một người? Chọn github-flow: PR vào thẳng `main` —
+  [ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.vi.md#71-mô-hình-nhánh-gitlab-flow-hay-github-flow).)
 
 Repo dự án chỉ giữ vài file YAML mỏng gọi vào toolkit (`uses: kokoroou/agent-toolkit/...@v0`),
 nên toàn bộ logic được cập nhật từ một nơi. Chi tiết thiết kế: [ARCHITECTURE.md](ARCHITECTURE.vi.md).
@@ -273,7 +276,7 @@ Sau đó làm theo [ADD-TO-PROJECT.md](ADD-TO-PROJECT.vi.md) với repo này (te
 | PR đỏ | Đẩy thêm một commit làm hỏng test lên branch agent | Merge gate comment `/pipeline:build pr P`; chạy lệnh đó → bản sửa được push. Với `AGENT_AUTO_BUILD=true`: `fix` → agent commit sửa; sau 3 lần → `needs-human` |
 | PR rủi ro cao | Gắn nhãn `risk:high` vào PR agent | Merge gate trả `blocked`, không merge |
 | Smoke fail sau merge | Đặt `smoke-command: "false"` trong `agent-merge-gate.yml` | Sau merge có PR `revert/pr-N` mang `needs-human` |
-| Release | Mở PR `develop` → `main` và merge | release-please mở release PR; merge nó → tag + GitHub Release |
+| Release | Merge PR promotion `develop` → `main` (merge commit) | release-please mở release PR; merge nó → tag + GitHub Release; Branch Sync merge ngược về `develop` |
 
 ### 8.3 Xem agent đã làm gì
 

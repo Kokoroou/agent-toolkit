@@ -6,7 +6,9 @@
 the *build agent* writes code in a job holding only a read token, and a separate job checks
 the result before pushing and opening a PR → *CI* and the *reviewer* run in parallel → the
 *merge gate* merges green PRs into `develop` or sends them back for a fix (up to 3 times) →
-you merge `develop` → `main` to release. Every failure stops at the `needs-human` label.
+you merge the promotion PR `develop` → `main` that *Branch Sync* keeps open, and `main`
+is synced back into `develop` after each release (the default gitlab-flow; with
+github-flow PRs go straight to `main`). Every failure stops at the `needs-human` label.
 Sections: [detailed flow](#overall-flow) · [changing requirements and cancelling](#changing-requirements-and-cancelling) ·
 [design principles](#design-principles) · [GitHub pitfalls](#github-pitfalls-already-handled) ·
 [labels](#labels).
@@ -50,9 +52,15 @@ Sections: [detailed flow](#overall-flow) · [changing requirements and cancellin
    │   └─ merged  → squash, delete branch, close issue
    │                 → smoke test on develop; failure → revert PR (needs-human)
    ▼
- develop ──(you review, merge by hand)──▶ main ─▶ release.yml (release-please: version,
-                                                  CHANGELOG, tag, build, upload artifacts)
+ develop ──(branch-sync.yml: promotion PR, you test + merge it)──▶ main ─▶ release.yml
+    ▲                                                               │   (release-please: version,
+    └──(branch-sync.yml: merge main back, or a sync PR on conflict)─┘   CHANGELOG, tag, build,
+                                                                        upload artifacts)
 ```
+
+With the github-flow branch model (`scripts/switch-branch-model.sh`,
+[ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.md#71-branch-model-gitlab-flow-or-github-flow)) every
+`develop` above reads `main`, and there is no `branch-sync.yml`.
 
 Guardrails run alongside: every Claude run's transcript is uploaded as an artifact
 (`transcript-<agent>-<n>`), every agent job writes cost/turns/duration to its Step

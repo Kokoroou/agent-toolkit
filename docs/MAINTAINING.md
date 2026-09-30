@@ -35,7 +35,7 @@ Contents:
 
 | Path | What it is | Used by |
 |---|---|---|
-| `.github/workflows/{triage,implement,review,quality,merge-gate,release,usage-report}.yml` | Reusable workflows (`on: workflow_call`) — all pipeline logic | Projects via `uses: …@v0` |
+| `.github/workflows/{triage,implement,review,quality,merge-gate,release,branch-sync,usage-report}.yml` | Reusable workflows (`on: workflow_call`) — all pipeline logic | Projects via `uses: …@v0` |
 | `.github/workflows/self-test.yml` | The toolkit's CI | Toolkit |
 | `.github/workflows/toolkit-release.yml` | Toolkit releases (calls `release.yml`) + moves the major tag | Toolkit |
 | `.claude-plugin/marketplace.json`, `plugins/pipeline/` | Claude Code marketplace + plugin (agents, commands, skill) | Agent workflows install it via `toolkit-marketplace`; users install it by hand |
@@ -44,6 +44,7 @@ Contents:
 | `scripts/install.sh`, `scripts/install.ps1` | One-command install: tools, bootstrap, secrets, settings, commit (the `.ps1` only installs git/gh, then runs `install.sh` under Git Bash) | Users, via `curl …/main/scripts/install.sh \| bash` |
 | `scripts/bootstrap.sh`, `scripts/lint.sh` | Copy templates + `--stack` presets, labels, `develop`, write `.github/agent-toolkit.lock`; lint the toolkit | `install.sh` / users; CI + you |
 | `scripts/upgrade.sh` | Upgrade the files copied into a project: regenerate the old (from the lock) and new releases with `bootstrap.sh`, 3-way merge | Users, via `curl …/main/scripts/upgrade.sh \| bash` |
+| `scripts/switch-branch-model.sh` | Switch a project between gitlab-flow and github-flow: `upgrade.sh --branch-model`, commit, default branch, `develop` | Users, via `curl …/main/scripts/switch-branch-model.sh \| bash -s -- <model>` |
 | `release-please-config.json`, `.release-please-manifest.json`, `version.txt`, `CHANGELOG.md` | Release config and state | release-please |
 | `docs/` | Documentation (English `*.md`, Vietnamese `*.vi.md`) | |
 

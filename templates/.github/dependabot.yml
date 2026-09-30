@@ -1,6 +1,7 @@
 # Dependabot security + version updates are free on private repos.
-# Replace/extend the ecosystems for your project. PRs target develop and carry no
-# `agent` label, so the merge gate leaves them for a human.
+# Replace/extend the ecosystems for your project. PRs target the integration branch
+# (develop, or main with github-flow) and carry no `agent` label, so the merge gate
+# leaves them for a human.
 version: 2
 updates:
   - package-ecosystem: github-actions

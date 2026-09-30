@@ -123,7 +123,8 @@ Create a dedicated key with `scripts/agent-session.sh cloud-key claude-cloud`, s
 
 ### UC-14. Release a version
 
-Open a `develop` → `main` PR and merge it yourself. release-please opens a release PR;
+Merge the promotion PR `develop` → `main` that Branch Sync keeps open (with a merge commit;
+with github-flow skip this step). release-please opens a release PR;
 merging that → tag, CHANGELOG, GitHub Release → [ADD-TO-PROJECT §9.4](ADD-TO-PROJECT.md#94-release).
 
 ### UC-15. Track costs

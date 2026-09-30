@@ -7,9 +7,9 @@
 # Runs in <path> (default: current directory, a clone of a GitHub repo) and:
 #   1. checks git + gh (offers to install them) and the gh login;
 #   2. copies the caller workflows/templates with the stack's commands (bootstrap.sh),
-#      creates the labels and the develop branch;
+#      creates the labels and, for gitlab-flow, the develop branch;
 #   3. sets the repository secrets; 4. sets Actions/merge/Dependabot settings;
-#   5. commits and pushes to the default branch and develop, optionally makes develop
+#   5. commits and pushes to the default branch (and develop), optionally makes develop
 #      the default branch.
 # Anything not given as an option or environment variable is asked for; secrets that
 # already exist are kept unless you agree to replace them. --yes never asks (missing
@@ -24,6 +24,10 @@
 #   --stack <s>             auto|node|pnpm|yarn|python|go|none      [AGENT_TOOLKIT_STACK, auto]
 #   --tools <k=v,...>       override detected tools, e.g. test=vitest,format=none
 #                           (keys: bootstrap.sh --help)             [AGENT_TOOLKIT_TOOLS]
+#   --branch-model <m>      gitlab-flow: develop → promotion PR → main → release;
+#                           github-flow: main → release (no develop)
+#                           [AGENT_TOOLKIT_BRANCH_MODEL, asked; --yes: gitlab-flow]
+#                           switch later with scripts/switch-branch-model.sh
 #   --claude-auth <a>       oauth|api-key|skip                      [AGENT_TOOLKIT_CLAUDE_AUTH]
 #                           values: [CLAUDE_CODE_OAUTH_TOKEN] / [ANTHROPIC_API_KEY]
 #   --app-id <id>           GitHub App ID                           [AGENT_APP_ID]
@@ -32,7 +36,7 @@
 #   --project-owner <o>     GitHub Project owner (optional)         [PROJECT_OWNER]
 #   --project-number <n>    GitHub Project number (optional)        [PROJECT_NUMBER]
 #                           needs a classic PAT                     [PROJECT_TOKEN]
-#   --default-develop | --keep-default   make develop the default branch (recommended)
+#   --default-develop | --keep-default   gitlab-flow: make develop the default branch (recommended)
 #   --commit | --no-commit  commit + push the files                 (asked; --yes: commit)
 #   --skip-secrets, --skip-settings, --no-labels, --force (overwrite existing files;
 #                           without it you are asked, default: keep them)
@@ -40,7 +44,7 @@
 #   -y, --yes               non-interactive
 set -euo pipefail
 
-usage() { sed -n '2,40p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,44p' "${BASH_SOURCE[0]}" 2>/dev/null | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 # ── helpers ─────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then b=$'\e[1m' g=$'\e[32m' y=$'\e[33m' r=$'\e[31m' n=$'\e[0m'; else b="" g="" y="" r="" n=""; fi
@@ -85,7 +89,7 @@ if [[ -f "$config" ]]; then
       v="${v%$'\r'}"; v="${v#\"}"; v="${v%\"}"
       case "$k" in
         AGENT_TOOLKIT_REF|AGENT_TOOLKIT_STACK|AGENT_TOOLKIT_CLAUDE_AUTH|AGENT_APP_ID|\
-        AGENT_APP_PRIVATE_KEY_FILE|PROJECT_OWNER|PROJECT_NUMBER)
+        AGENT_APP_PRIVATE_KEY_FILE|PROJECT_OWNER|PROJECT_NUMBER|AGENT_TOOLKIT_BRANCH_MODEL)
           [[ -z "${!k:-}" ]] && export "$k=$v" ;;
         CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|PROJECT_TOKEN|AGENT_APP_PRIVATE_KEY)
           printf '  ! %s holds %s in plain text — ignored; delete that line (tokens go to the OS credential store)\n' \
@@ -145,6 +149,7 @@ for k in $secret_keys; do
 done
 
 target="." ref="${AGENT_TOOLKIT_REF:-v0}" stack="${AGENT_TOOLKIT_STACK:-auto}" tools="${AGENT_TOOLKIT_TOOLS:-}"
+branch_model="${AGENT_TOOLKIT_BRANCH_MODEL:-}"
 claude_auth="${AGENT_TOOLKIT_CLAUDE_AUTH:-}"
 app_id="${AGENT_APP_ID:-}" app_key_file="${AGENT_APP_PRIVATE_KEY_FILE:-}"
 project_owner="${PROJECT_OWNER:-}" project_number="${PROJECT_NUMBER:-}"
@@ -155,6 +160,7 @@ while [[ $# -gt 0 ]]; do
     --ref) ref="$2"; shift 2 ;;
     --stack) stack="$2"; shift 2 ;;
     --tools) tools="$2"; shift 2 ;;
+    --branch-model) branch_model="$2"; shift 2 ;;
     --claude-auth) claude_auth="$2"; shift 2 ;;
     --app-id) app_id="$2"; shift 2 ;;
     --app-key) app_key_file="$2"; shift 2 ;;
@@ -176,6 +182,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -z "$tty" ]] && interactive=false
+case "$branch_model" in ""|gitlab-flow|github-flow) ;; *) die "unknown --branch-model '$branch_model' (gitlab-flow|github-flow)" ;; esac
 
 # ── 1. tools ────────────────────────────────────────────────────────────────────
 step "Checking tools"
@@ -254,6 +261,19 @@ if [[ "$stack" == auto && "$interactive" == true ]] && grep -q -- '--stack' "$to
   ask stack "Stack (node|pnpm|yarn|python|go|none)" "$detected"
 fi
 
+if grep -q -- '--branch-model' "$toolkit_dir/scripts/bootstrap.sh"; then
+  if [[ -z "$branch_model" && "$interactive" == true ]]; then
+    echo "  Branch model:"
+    echo "    gitlab-flow — agent PRs → develop (you test) → promotion PR → main (QA tests) → release"
+    echo "    github-flow — agent PRs → main (you test) → release; no develop branch"
+    ask branch_model "Branch model (gitlab-flow|github-flow)" gitlab-flow
+    case "$branch_model" in gitlab-flow|github-flow) ;; *) die "unknown branch model '$branch_model'" ;; esac
+  fi
+elif [[ "${branch_model:-gitlab-flow}" != gitlab-flow ]]; then
+  die "toolkit $ref has no branch models (only gitlab-flow) — use a newer --ref"
+fi
+branch_model="${branch_model:-gitlab-flow}"
+
 # Files the project already has are kept (skipped) by default; ask once whether to
 # overwrite them instead.
 if [[ "$force" != true && "$interactive" == true ]]; then
@@ -279,6 +299,7 @@ if [[ -n "$tools" ]]; then
 fi
 [[ "$force" == true ]] && args+=(--force)
 [[ "$labels" == true ]] || args+=(--no-labels)
+grep -q -- '--branch-model' "$toolkit_dir/scripts/bootstrap.sh" && args+=(--branch-model "$branch_model")
 boot_out=$(AGENT_TOOLKIT_QUIET_NEXT_STEPS=1 bash "$toolkit_dir/scripts/bootstrap.sh" "${args[@]}") || die "bootstrap.sh failed"
 printf '%s\n' "$boot_out" | sed 's/^/  /'
 # Steps bootstrap left empty (no linter/formatter/tests detected) go on the final to-do list.
@@ -416,7 +437,8 @@ if [[ -z "$(git -C "$target" status --porcelain -- "${files[@]}")" ]]; then
   ok "nothing to commit"; commit=none
 fi
 if [[ -z "$commit" ]]; then
-  targets="'$default_branch'"; [[ "$default_branch" != develop ]] && targets+=" and 'develop'"
+  targets="'$default_branch'"
+  [[ "$branch_model" == gitlab-flow && "$default_branch" != develop ]] && targets+=" and 'develop'"
   confirm "Commit the pipeline files and push to $targets?" y && commit=true || commit=false
 fi
 if [[ "$commit" == true ]]; then
@@ -431,15 +453,17 @@ if [[ "$commit" == true ]]; then
     git -C "$target" commit -q -m "ci: add agent-toolkit pipeline" -- "${files[@]}"
     git -C "$target" push -q origin "HEAD:$default_branch" || die "push to $default_branch failed"
     ok "pushed to $default_branch"
-    if [[ "$default_branch" == develop ]]; then :
+    if [[ "$default_branch" == develop || "$branch_model" != gitlab-flow ]]; then :
     elif git -C "$target" push -q origin "HEAD:develop" 2>/dev/null; then ok "pushed to develop"
     else warn "develop has diverged from $default_branch — merge $default_branch into develop by hand"; fi
   fi
 elif [[ "$commit" == false ]]; then
-  warn "commit .github and CLAUDE.md to '$default_branch' (and develop) yourself"
+  warn "commit .github and CLAUDE.md to '$default_branch'$([[ "$branch_model" == gitlab-flow ]] && echo " (and develop)") yourself"
 fi
 
-if [[ "$default_branch" != develop && "$settings" == true ]]; then
+if [[ "$branch_model" == github-flow && "$default_branch" != main ]]; then
+  warn "github-flow: the callers target 'main' but the default branch is '$default_branch' — make 'main' the default (scripts/switch-branch-model.sh github-flow does it)"
+elif [[ "$branch_model" == gitlab-flow && "$default_branch" != develop && "$settings" == true ]]; then
   if [[ -z "$default_develop" ]]; then
     confirm "Make 'develop' the default branch (recommended, docs/ADD-TO-PROJECT.md §7)?" y \
       && default_develop=true || default_develop=false
@@ -468,8 +492,12 @@ if [[ "$interactive" == true && ( -n "$unsaved" || ( ! -f "$config" && -n "${AGE
   if confirm "Remember these answers for your next project ($where)?" n; then
     mkdir -p "$(dirname "$config")"
     ( umask 077
-      for k in AGENT_TOOLKIT_REF AGENT_APP_ID AGENT_APP_PRIVATE_KEY_FILE PROJECT_OWNER; do
-        [[ "$k" == AGENT_TOOLKIT_REF ]] && v="$ref" || v="${!k:-}"
+      for k in AGENT_TOOLKIT_REF AGENT_TOOLKIT_BRANCH_MODEL AGENT_APP_ID AGENT_APP_PRIVATE_KEY_FILE PROJECT_OWNER; do
+        case "$k" in
+          AGENT_TOOLKIT_REF) v="$ref" ;;
+          AGENT_TOOLKIT_BRANCH_MODEL) v="$branch_model" ;;
+          *) v="${!k:-}" ;;
+        esac
         if [[ -n "$v" ]]; then printf '%s=%s\n' "$k" "$v"; fi
       done >"$config" )
     chmod 600 "$config" 2>/dev/null || true
