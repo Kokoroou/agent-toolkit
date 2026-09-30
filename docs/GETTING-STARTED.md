@@ -129,7 +129,7 @@ your repos.
 
 ### 5.1 Create the App
 
-1. Open the [pre-filled App creation page](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write).
+1. Open the [pre-filled App creation page](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write&checks=read&statuses=read).
    It fills in the Homepage URL, unticks Webhook, selects the permissions from step 3 and
    *Only on this account*; you only need to pick a name and double-check the steps below.
    To go there manually: **avatar → Settings → Developer settings → GitHub Apps → New GitHub App**.
@@ -148,8 +148,21 @@ your repos.
    | Pull requests | Read and write | open PRs, edit labels, merge |
    | Issues | Read and write | comment, label, close issues |
    | Actions | Read and write | dispatch workflows, read CI logs for the fix loop |
+   | Checks | Read-only | merge gate reads the PR head's check runs |
+   | Commit statuses | Read-only | merge gate reads the PR head's commit statuses (`agent/review`) |
    | Workflows | Read and write | only if the agent may edit files in `.github/workflows/` |
    | Metadata | Read-only | required (selected automatically) |
+
+   Every job asks for a token with exactly the permissions it needs; if the App lacks one
+   of them, GitHub refuses the token (`422 The permissions requested are not granted to
+   this installation`) and the job fails at *Mint GitHub App token*.
+
+   > **App created before *Checks* / *Commit statuses* were listed here?** The merge gate
+   > fails on every run with the `422` above. Fix: App page → **Permissions & events** →
+   > set *Checks* and *Commit statuses* to *Read-only* → **Save changes**; then
+   > [Installed GitHub Apps](https://github.com/settings/installations) → the App →
+   > **Review request** → **Accept new permissions**. Until the installation accepts,
+   > tokens keep the old permissions.
 
 4. **Where can this GitHub App be installed?** → *Only on this account*.
 5. Click **Create GitHub App**.

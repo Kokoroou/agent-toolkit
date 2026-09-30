@@ -749,6 +749,7 @@ new version placed next to them as `<file>.upstream` — merge by hand, then del
 | `Agent Merge Gate` never runs | File not on the default branch; the CI is not named `CI` | §7; §2.3 |
 | The agent cannot open a PR: `GitHub Actions is not permitted to create or approve pull requests` | Missing permission from §6 | Enable *Allow GitHub Actions to create and approve pull requests* |
 | The *Mint GitHub App token* step fails | App not installed on the repo, wrong App ID, private key missing the BEGIN/END lines | [GETTING-STARTED §5](GETTING-STARTED.md#5-create-a-github-app-for-the-agent-strongly-recommended), reset the secrets |
+| `gate` fails at *Mint GitHub App token* with `422 The permissions requested are not granted to this installation` | The App lacks *Checks* / *Commit statuses* (Read-only), which the merge gate requests | Add both on the App, then accept the new permissions on the installation ([GETTING-STARTED §5.1](GETTING-STARTED.md#51-create-the-app)) |
 | Claude authentication error / `401` | Missing or wrong `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, expired OAuth token | Regenerate (`claude setup-token`), reset the secret |
 | The agent PR has no CI checks (no App) | Expected: CI is dispatched separately, see the Actions tab | Use an App so checks show on the PR |
 | CI says `coverage-command must print the percentage on its last line` | The last stdout line of `coverage-command` has no number | Send other output to `>&2` (§3.3) |

@@ -128,7 +128,7 @@ repo của bạn.
 
 ### 5.1 Tạo App
 
-1. Mở [trang tạo App điền sẵn cấu hình](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write).
+1. Mở [trang tạo App điền sẵn cấu hình](https://github.com/settings/apps/new?url=https://github.com/kokoroou/agent-toolkit&public=false&webhook_active=false&contents=write&pull_requests=write&issues=write&actions=write&workflows=write&checks=read&statuses=read).
    Link này đã điền Homepage URL, bỏ tick Webhook, chọn sẵn các quyền ở bước 3 và
    *Only on this account*; bạn chỉ cần đặt tên rồi kiểm tra lại các bước dưới. Nếu tự vào:
    **ảnh đại diện → Settings → Developer settings → GitHub Apps → New GitHub App**.
@@ -147,8 +147,21 @@ repo của bạn.
    | Pull requests | Read and write | mở PR, sửa nhãn, merge |
    | Issues | Read and write | comment, gắn nhãn, đóng issue |
    | Actions | Read and write | dispatch workflow, đọc log CI cho vòng fix |
+   | Checks | Read-only | merge gate đọc check run của head PR |
+   | Commit statuses | Read-only | merge gate đọc commit status của head PR (`agent/review`) |
    | Workflows | Read and write | chỉ cần nếu agent có thể sửa file trong `.github/workflows/` |
    | Metadata | Read-only | bắt buộc (tự chọn) |
+
+   Mỗi job xin token với đúng các quyền nó cần; nếu App thiếu một quyền, GitHub từ chối
+   cấp token (`422 The permissions requested are not granted to this installation`) và
+   job hỏng ở bước *Mint GitHub App token*.
+
+   > **App tạo trước khi mục này có *Checks* / *Commit statuses*?** Merge gate sẽ fail ở
+   > mọi lần chạy với lỗi `422` ở trên. Cách sửa: trang App → **Permissions & events** →
+   > đặt *Checks* và *Commit statuses* thành *Read-only* → **Save changes**; sau đó vào
+   > [Installed GitHub Apps](https://github.com/settings/installations) → App → **Review
+   > request** → **Accept new permissions**. Chừng nào installation chưa chấp nhận, token
+   > vẫn chỉ có quyền cũ.
 
 4. **Where can this GitHub App be installed?** → *Only on this account*.
 5. Bấm **Create GitHub App**.
