@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.5.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.4.1...v0.5.0) (2026-09-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* bootstrap.sh and install.sh --yes default to github-flow; pass --branch-model gitlab-flow for the develop → main flow.
+
+### Features
+
+* branch models (gitlab-flow / github-flow) with automatic promotion and back-sync ([a848e7d](https://github.com/Kokoroou/agent-toolkit/commit/a848e7d3a9923e2146f4cafdc9343724e7bf81d6))
+* branch models (gitlab-flow / github-flow) with automatic promotion and back-sync ([3a3caad](https://github.com/Kokoroou/agent-toolkit/commit/3a3caadd9944ba3c1f1a09d1858d4633051b79bb))
+* **ci:** print why a Claude run failed, in the log and the triage comment ([69c1c36](https://github.com/Kokoroou/agent-toolkit/commit/69c1c3619c3dd624ae609e30c0fb4e86be4f9707))
+* enable the pipeline plugin from the project's .claude/settings.json ([33c9755](https://github.com/Kokoroou/agent-toolkit/commit/33c975556cfc3a0ab34095fc6f5d137d8eeffec4))
+* make github-flow the default branch model ([9c10330](https://github.com/Kokoroou/agent-toolkit/commit/9c10330ffd2b300928a330cd28d0a6de95b07409))
+* pin the plugin to the same toolkit ref as the workflows ([1ec8551](https://github.com/Kokoroou/agent-toolkit/commit/1ec85518419e44646726a9484b9782e083bf5aa2))
+* pin the plugin to the same toolkit ref as the workflows ([1c08403](https://github.com/Kokoroou/agent-toolkit/commit/1c08403da7d5cf461fb54dec3ab61ad57a56c1bb))
+* **triage:** reply in the issue author's language ([cf4c051](https://github.com/Kokoroou/agent-toolkit/commit/cf4c051ee833a3609f53584e58f9653bbed31d68))
+* **triage:** reply in the issue author's language ([a14cf10](https://github.com/Kokoroou/agent-toolkit/commit/a14cf10f8068ecceda5d81d522eaa1fdc7231f46))
+
+
+### Bug Fixes
+
+* **triage:** search duplicates with a command the allowlist accepts ([38ca175](https://github.com/Kokoroou/agent-toolkit/commit/38ca175ad94dcd1009d508d3e75856d3136aee00))
+* **triage:** search duplicates with a command the allowlist accepts ([2fdc3f1](https://github.com/Kokoroou/agent-toolkit/commit/2fdc3f179a99ac18195d795c16c4f3446b3aac17))
+
 ## [0.4.1](https://github.com/Kokoroou/agent-toolkit/compare/v0.4.0...v0.4.1) (2026-09-29)
 
 
