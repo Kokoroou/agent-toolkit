@@ -171,6 +171,7 @@ jobs:
           MAX_ROUNDS: ${{ steps.pre.outputs.max_rounds }}
           AUTO_BUILD: ${{ inputs.dispatch-on-ready != '' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EXEC: ${{ steps.claude.outputs.execution_file }}
           # More acceptance criteria than this → a person confirms the scope (keep in sync
           # with plugins/pipeline/commands/triage-issue.md).
           MAX_CRITERIA: 15
@@ -233,6 +234,20 @@ jobs:
                 echo "$MARKER_S"
                 if [[ "$failed" == true ]]; then
                   echo "**Triage:** automatic triage did not finish (error, timeout, max-turns, or output that did not match the schema), so this issue needs a person. [Run log and transcript]($RUN_URL)"
+                  echo
+                  # Why it stopped, from the transcript. The step "Run details" in the run
+                  # log lists every tool call with its error.
+                  if [[ -s "${EXEC:-}" ]]; then
+                    jq -r '[.[] | select(.type == "result")] | last // {} |
+                      def one: tostring | gsub("[\\s`]+"; " ");
+                      "Reason: `\(.subtype // "no result")` after \(.num_turns // "?") turns. \((.errors // []) | join("; ") | one | .[0:300])",
+                      (.permission_denials // [] | select(length > 0) |
+                        "", "Denied tool calls (\(length)):",
+                        (.[0:5][] | "- \(.tool_name): `\(.tool_input | .command // .file_path // . | one | .[0:200])`"))' \
+                      "$EXEC" || true
+                  else
+                    echo "Reason: the Claude step left no transcript, so it failed before Claude ran; see that step's log."
+                  fi
                   echo
                   echo "_To retry, remove \`needs-human\` and add \`needs-triage\`._"
                 else
@@ -388,18 +403,38 @@ jobs:
           gh workflow run "$WF" --repo "$GITHUB_REPOSITORY" --ref "$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)" -f issue="$ISSUE"
           echo "Dispatched $WF for #$ISSUE" >>"$GITHUB_STEP_SUMMARY"
 
-      - name: Usage summary
+      - name: Run details (usage, tool calls, errors)
         if: always() && steps.claude.outputs.execution_file != ''
         env:
           EXEC: ${{ steps.claude.outputs.execution_file }}
         run: |
+          # The action hides Claude's output. Print what is needed to debug a run without
+          # downloading the transcript: how it ended, every tool call (input only) with its
+          # error or denial inline, and Claude's last message. Tool output is not printed.
           jq -r '[.[] | select(.type == "result")] | last // {} |
-            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
+            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s · \(.subtype // "no result")"' \
             "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
-          # The action hides Claude's output; show denied tool calls, the usual reason a
-          # run ends in error_max_turns, without downloading the transcript.
-          jq -r '[.[] | select(.type == "result")] | last // {} | .permission_denials // [] | .[] |
-            "::warning::Denied \(.tool_name): \(.tool_input.command // .tool_input.file_path // (.tool_input | tostring) | .[0:300])"' \
+          echo "::group::Claude tool calls (errors and denials inline)"
+          jq -r '
+            def one: tostring | gsub("\\s+"; " ");
+            def text: if type == "array" then map(.text? // "") | join(" ") else . end | one;
+            ([.[] | select(.type == "user") | .message.content | arrays | .[]
+              | select(.type? == "tool_result") | {(.tool_use_id): .}] | add // {}) as $res
+            | [.[] | select(.type == "assistant") | .message.content[]? | select(.type? == "tool_use")]
+            | to_entries[] | .value as $t | $res[$t.id] as $r
+            | "#\(.key + 1) \($t.name): \($t.input | .command // .file_path // .pattern // .skill // . | one | .[0:300])"
+              + if $r.is_error then "\n     ✗ \($r.content | text | .[0:500])" else "" end' \
+            "$EXEC" || true
+          echo "::endgroup::"
+          jq -r '
+            ([.[] | select(.type == "assistant") | .message.content[]? | select(.type? == "text") | .text]
+              | last // "(none)" | gsub("\\s+"; " ") | .[0:1000]) as $said
+            | [.[] | select(.type == "result")] | last // {} |
+            ((.permission_denials // [])[]
+              | "::warning::Denied \(.tool_name): \(.tool_input | .command // .file_path // . | tostring | gsub("\\s+"; " ") | .[0:300])"),
+            (select(.is_error == true or .subtype == null)
+              | "::error::Claude run ended with \(.subtype // "no result") (\(.terminal_reason // "?")) after \(.num_turns // "?") turns: \((.errors // []) | join("; ") | gsub("\\s+"; " ") | .[0:500])",
+                "Last message from Claude: \($said)")' \
             "$EXEC" || true
 
       - name: Upload transcript
