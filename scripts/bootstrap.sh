@@ -332,7 +332,11 @@ while IFS= read -r -d '' f; do
   dst="$target/$rel"
   if [[ -e "$dst" && "$force" != true ]]; then skipped+=("$rel"); continue; fi
   mkdir -p "$(dirname "$dst")"
-  sed "s#\(kokoroou/agent-toolkit/\.github/workflows/[a-z-]*\.yml\)@main#\1@$ref#" "$f" >"$dst"
+  # Pin every toolkit reference to --ref: reusable workflows (`uses: …@main`), the plugin
+  # marketplace in callers (`…agent-toolkit.git#main`) and in .claude/settings.json.
+  sed -e "s#\(kokoroou/agent-toolkit/\.github/workflows/[a-z-]*\.yml\)@main#\1@$ref#" \
+      -e "s|\(kokoroou/agent-toolkit\.git\)#main|\1#$ref|" \
+      -e "s|\(\"repo\": \"kokoroou/agent-toolkit\", \"ref\": \"\)main\"|\1$ref\"|" "$f" >"$dst"
   apply_preset "$rules" "$rel" "$dst"
   if [[ -x "$f" ]]; then chmod +x "$dst"; fi
   copied+=("$rel")

@@ -15,7 +15,7 @@ dự án đang dùng.
 2. Commit/tiêu đề PR theo **Conventional Commits** — release-please tính version từ đó ([§4](#4-quy-trình-thay-đổi)).
 3. Đổi hành vi pipeline → thử trên repo sandbox trước khi merge ([§5](#5-kiểm-thử-trên-repo-sandbox)).
 4. Phát hành = merge release PR do release-please mở; không sửa version bằng tay ([§6](#6-phát-hành)).
-5. Mọi thứ trên `main` tới tay người dùng `@v0` ngay: đổi tên input/nhãn/lệnh là **breaking** ([§7](#7-tương-thích-và-breaking-change)).
+5. Mỗi bản phát hành tới tay người dùng `@v0` ngay (bản thân `main` chỉ tới các dự án chủ động dùng thử): đổi tên input/nhãn/lệnh là **breaking** ([§7](#7-tương-thích-và-breaking-change)).
 
 Mục lục:
 
@@ -110,7 +110,7 @@ scripts/lint.sh
 6. `shellcheck scripts/*.sh`.
 
 `self-test.yml` chạy đúng script này trên mọi PR và push `main`, thêm một lần bootstrap
-vào repo tạm để chắc chắn không còn `@main` sau khi ghim `--ref`.
+vào repo tạm để chắc chắn không còn `@main`/`#main` sau khi ghim `--ref`.
 
 Thử plugin đang sửa mà không cần publish:
 
@@ -170,6 +170,21 @@ Tự động bằng `toolkit-release.yml` mỗi khi push `main`:
 3. release-please tạo tag `vX.Y.Z` + GitHub Release; job `major-tag` force-push tag di
    động `vX` (vd `v0`) về cùng commit. Mọi dự án ghim `@v0` nhận bản mới ngay ở run kế tiếp.
 
+Dùng thử thay đổi chưa phát hành: `main` là **kênh xem trước**. Dự án nào muốn thử tính
+năng trước khi phát hành thì tự chuyển sang; các dự án đang ở `@v0` không bị ảnh hưởng
+cho tới khi release PR được merge:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --to main
+```
+
+Lệnh này ghim reusable workflow (`@main`) **và** plugin (`toolkit-marketplace: …#main`,
+`"ref": "main"` trong `.claude/settings.json`). GitHub Actions cài plugin mới ở mỗi run;
+session Claude Code trên máy giữ plugin đã cache tới khi version đổi, nên sau khi plugin
+thay đổi hãy chạy
+`claude plugin marketplace update agent-toolkit && claude plugin update pipeline@agent-toolkit`.
+Quay về bản ổn định: `upgrade.sh --to v0`.
+
 Lưu ý:
 
 - Chỉ commit `feat:`, `fix:` hoặc breaking change mới tạo release PR. Merge một PR chỉ
@@ -197,7 +212,7 @@ Lưu ý:
 ## 7. Tương thích và breaking change
 
 Dự án ghim tag di động nên **mọi thay đổi trên `main` sau khi phát hành đến tay người
-dùng mà họ không cần làm gì**. Coi các thứ sau là breaking (cần `!` và ghi chú nâng cấp
+dùng mà họ không cần làm gì** (còn trước khi phát hành thì đến các dự án đang thử `main`). Coi các thứ sau là breaking (cần `!` và ghi chú nâng cấp
 trong commit body):
 
 - Đổi tên/xoá input, output hoặc secret của reusable workflow; đổi default làm thay đổi
@@ -229,9 +244,11 @@ mới** để sinh file. Vì vậy:
 - `lint.sh` có bài test nâng cấp giữa hai commit (sửa cục bộ, sửa upstream, xung đột, file
   mới) — chạy nó sau mọi thay đổi ở `bootstrap.sh` hoặc `upgrade.sh`.
 
-Plugin được cài từ `toolkit-marketplace` (mặc định nhánh mặc định, tức `main`), **không**
-theo tag mà dự án ghim. Vì vậy thay đổi plugin phải tương thích ngược với các reusable
-workflow của mọi tag major còn được dùng, hoặc dự án phải ghim `#vX` cho marketplace.
+Plugin được cài từ `toolkit-marketplace`, được caller đặt cùng ref với `uses:`
+(`bootstrap.sh` ghim cả hai, cùng `"ref"` trong `.claude/settings.json`); caller thiếu
+dòng này dùng mặc định `#v0`. Dự án cài trước khi có việc ghim này, hoặc ở `v1` mà thiếu
+dòng đó, vẫn nhận plugin ở `#v0` — nên giữ thay đổi plugin tương thích ngược với reusable
+workflow của mọi tag major còn dùng, và đổi mặc định đó khi ra major mới.
 
 ## 8. Công việc định kỳ
 
