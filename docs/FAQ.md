@@ -241,6 +241,7 @@ Full table: [ADD-TO-PROJECT §12](ADD-TO-PROJECT.md#12-troubleshooting). The mos
 | `Agent Merge Gate` never runs | The file is on the default branch; the CI workflow is named exactly `CI` |
 | `GitHub Actions is not permitted to create or approve pull requests` | Enable that permission in *Settings → Actions → General* |
 | The *Mint GitHub App token* step fails | The App is installed on the repo; App ID; private key has its BEGIN/END lines |
+| *Mint GitHub App token* fails with `422 The permissions requested are not granted to this installation` | The App lacks a permission the job asks for (the merge gate needs *Checks* and *Commit statuses*: Read-only); add it and accept it on the installation ([GETTING-STARTED §5.1](GETTING-STARTED.md#51-create-the-app)) |
 | Claude authentication error / `401` | Regenerate the token (`claude setup-token`) and reset the secret |
 | The agent is denied a command | Add it to `extra-allowed-tools` in both `agent-implement.yml` and the `fix` job |
 | `coverage-command must print the percentage on its last line` | The last stdout line must be a number; send other output to `>&2` |

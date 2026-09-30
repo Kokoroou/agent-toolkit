@@ -232,6 +232,7 @@ Bảng đầy đủ: [ADD-TO-PROJECT §12](ADD-TO-PROJECT.vi.md#12-xử-lý-sự
 | `Agent Merge Gate` không chạy | File ở default branch; workflow CI có tên đúng `CI` |
 | `GitHub Actions is not permitted to create or approve pull requests` | Bật quyền đó trong *Settings → Actions → General* |
 | Bước *Mint GitHub App token* lỗi | App đã cài vào repo chưa; App ID; private key đủ dòng BEGIN/END |
+| *Mint GitHub App token* lỗi `422 The permissions requested are not granted to this installation` | App thiếu quyền mà job xin (merge gate cần *Checks* và *Commit statuses*: Read-only); thêm quyền rồi chấp nhận trên installation ([GETTING-STARTED §5.1](GETTING-STARTED.vi.md#51-tạo-app)) |
 | Lỗi xác thực Claude / `401` | Tạo lại token (`claude setup-token`) và đặt lại secret |
 | Agent bị từ chối lệnh | Thêm lệnh vào `extra-allowed-tools` ở cả `agent-implement.yml` và job `fix` |
 | `coverage-command must print the percentage on its last line` | Dòng cuối stdout phải là số; đẩy output khác sang `>&2` |

@@ -730,6 +730,7 @@ cần dò nữa.
 | `Agent Merge Gate` không bao giờ chạy | File không ở default branch; tên CI không phải `CI` | §7; §2.3 |
 | Agent không mở được PR: `GitHub Actions is not permitted to create or approve pull requests` | Thiếu quyền ở §6 | Bật *Allow GitHub Actions to create and approve pull requests* |
 | Bước *Mint GitHub App token* lỗi | App chưa cài vào repo, sai App ID, private key thiếu dòng BEGIN/END | [GETTING-STARTED §5](GETTING-STARTED.vi.md#5-tạo-github-app-cho-agent-khuyến-nghị-mạnh), đặt lại secret |
+| `gate` hỏng ở *Mint GitHub App token* với `422 The permissions requested are not granted to this installation` | App thiếu *Checks* / *Commit statuses* (Read-only) mà merge gate xin | Thêm cả hai trên App, rồi chấp nhận quyền mới trên installation ([GETTING-STARTED §5.1](GETTING-STARTED.vi.md#51-tạo-app)) |
 | Lỗi xác thực Claude / `401` | Thiếu hoặc sai `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, OAuth token hết hạn | Tạo lại (`claude setup-token`), đặt lại secret |
 | PR agent không có check CI (không dùng App) | Bình thường: CI được dispatch riêng, xem trong Actions tab | Dùng App để check hiện trên PR |
 | CI báo `coverage-command must print the percentage on its last line` | Dòng cuối stdout của `coverage-command` không chứa số | Chuyển output khác sang `>&2` (§3.3) |
