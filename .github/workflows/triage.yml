@@ -160,7 +160,7 @@ jobs:
             --max-turns ${{ inputs.max-turns }}
             --allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search issues:*),Bash(gh label list:*)"
             --disallowedTools "WebFetch,WebSearch"
-            --json-schema '{"type":"object","required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"summary":{"type":"string"},"questions":{"type":"array","items":{"type":"string"}},"acceptance_criteria":{"type":"array","items":{"type":"string"}},"duplicate_of":{"type":["integer","null"]}}}'
+            --json-schema '{"type":"object","required":["decision","score","type","priority","risk","size","summary","questions","acceptance_criteria","duplicate_of"],"properties":{"decision":{"enum":["ready","clarify","needs-human","reject"]},"score":{"type":"integer","minimum":0,"maximum":5},"type":{"enum":["feature","bug","chore","docs"]},"priority":{"enum":["P0","P1","P2","P3"]},"risk":{"enum":["low","medium","high"]},"size":{"enum":["XS","S","M","L","XL"]},"language":{"type":"string","pattern":"^[a-z]{2,3}$"},"summary":{"type":"string"},"questions":{"type":"array","items":{"type":"string"}},"acceptance_criteria":{"type":"array","items":{"type":"string"}},"duplicate_of":{"type":["integer","null"]}}}'
 
       - name: Apply decision
         id: apply
@@ -189,6 +189,11 @@ jobs:
           decision=$(get .decision); risk=$(get .risk); size=$(get .size)
           prio=$(get .priority); type=$(get .type); score=$(get .score)
           if [[ "$failed" == true ]]; then risk=; size=; prio=; type=; score=; fi
+          # The comment follows the issue author's language. Claude writes the free text in
+          # it; the fixed text here exists in English and Vietnamese (anything else: English).
+          lang=$(get '.language // "en"')
+          # L "<English>" "<Vietnamese>": print the line in the comment's language.
+          L() { if [[ "$lang" == vi ]]; then printf '%s\n' "$2"; else printf '%s\n' "$1"; fi; }
           # Guardrail: the agent cannot ask more than max-rounds times.
           if [[ "$decision" == clarify && "$ROUNDS" -ge "$MAX_ROUNDS" ]]; then decision=needs-human; fi
           # Guardrail: a long list of criteria is never cut; a person confirms the scope.
@@ -199,24 +204,30 @@ jobs:
           body=$(mktemp)
           summary=$(get .summary)
           next_human() {
-            echo "**Next:** decide, then remove \`needs-human\` and either"
-            echo "- add \`ready-for-plan\` to build the issue as written, with all of its acceptance criteria, or"
-            echo "- edit the issue (for example to a shorter list of acceptance criteria, or split it) and add \`needs-triage\` to triage it again."
+            L "**Next:** decide, then remove \`needs-human\` and either" \
+              "**Tiếp theo:** hãy quyết định, rồi gỡ \`needs-human\` và"
+            L "- add \`ready-for-plan\` to build the issue as written, with all of its acceptance criteria, or" \
+              "- thêm \`ready-for-plan\` để build issue đúng như đang viết, với toàn bộ acceptance criteria, hoặc"
+            L "- edit the issue (for example to a shorter list of acceptance criteria, or split it) and add \`needs-triage\` to triage it again." \
+              "- sửa issue (ví dụ rút gọn danh sách acceptance criteria, hoặc tách nhỏ) rồi thêm \`needs-triage\` để triage lại."
           }
           case "$decision" in
             clarify)
               {
                 echo "$MARKER_Q"
-                echo "Thanks! Before this can be planned I need a bit more detail (round $((ROUNDS + 1))/$MAX_ROUNDS):"
+                L "Thanks! Before this can be planned I need a bit more detail (round $((ROUNDS + 1))/$MAX_ROUNDS):" \
+                  "Cảm ơn bạn! Trước khi lên kế hoạch, mình cần thêm một chút thông tin (vòng $((ROUNDS + 1))/$MAX_ROUNDS):"
                 echo
                 jq -r '.questions | to_entries[] | "\(.key + 1). \(.value)"' <<<"$OUT"
                 echo
-                echo "_Reply in a comment or edit the issue; triage re-runs automatically._"
+                L "_Reply in a comment or edit the issue; triage re-runs automatically._" \
+                  "_Hãy trả lời bằng một comment hoặc sửa issue; triage sẽ tự chạy lại._"
               } >"$body" ;;
             ready)
               {
                 echo "$MARKER_S"
-                echo "**Triage:** ready for planning — score $score/5 · \`$type\` · \`$prio\` · risk \`$risk\` · size \`$size\`"
+                L "**Triage:** ready for planning — score $score/5 · \`$type\` · \`$prio\` · risk \`$risk\` · size \`$size\`" \
+                  "**Triage:** sẵn sàng lên kế hoạch — điểm $score/5 · \`$type\` · \`$prio\` · risk \`$risk\` · size \`$size\`"
                 echo
                 echo "$summary"
                 echo
@@ -224,12 +235,15 @@ jobs:
                 jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
                 echo
                 if [[ "$AUTO_BUILD" == true ]]; then
-                  echo "**Next:** the build agent starts on GitHub Actions when risk and size allow; otherwise build it in Claude Code with \`/pipeline:build $ISSUE\`, or add \`agent:implement\`."
+                  L "**Next:** the build agent starts on GitHub Actions when risk and size allow; otherwise build it in Claude Code with \`/pipeline:build $ISSUE\`, or add \`agent:implement\`." \
+                    "**Tiếp theo:** build agent sẽ chạy trên GitHub Actions nếu risk và size cho phép; nếu không, hãy build trong Claude Code bằng \`/pipeline:build $ISSUE\`, hoặc thêm \`agent:implement\`."
                 else
-                  echo "**Next:** build it in Claude Code, on your machine or on the web: \`/pipeline:build $ISSUE\` (or add \`agent:implement\` to build it on GitHub Actions)."
+                  L "**Next:** build it in Claude Code, on your machine or on the web: \`/pipeline:build $ISSUE\` (or add \`agent:implement\` to build it on GitHub Actions)." \
+                    "**Tiếp theo:** build trong Claude Code, trên máy của bạn hoặc trên web: \`/pipeline:build $ISSUE\` (hoặc thêm \`agent:implement\` để build trên GitHub Actions)."
                 fi
                 echo
-                echo "_To change the requirements, edit the issue (triage re-runs); to cancel, close it._"
+                L "_To change the requirements, edit the issue (triage re-runs); to cancel, close it._" \
+                  "_Muốn đổi yêu cầu thì sửa issue (triage sẽ chạy lại); muốn huỷ thì đóng issue._"
               } >"$body" ;;
             needs-human)
               {
@@ -253,16 +267,18 @@ jobs:
                   echo
                   echo "_To retry, remove \`needs-human\` and add \`needs-triage\`._"
                 else
-                  echo "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)."
+                  L "**Triage:** needs a human decision (score $score/5, risk \`$risk\`, size \`$size\`)." \
+                    "**Triage:** cần người quyết định (điểm $score/5, risk \`$risk\`, size \`$size\`)."
                   echo
                   echo "$summary"
                   if [[ "$too_many" == true ]]; then
                     echo
-                    echo "The issue is otherwise ready, but it has $n_ac acceptance criteria (more than $MAX_CRITERIA), so a person confirms the scope."
+                    L "The issue is otherwise ready, but it has $n_ac acceptance criteria (more than $MAX_CRITERIA), so a person confirms the scope." \
+                      "Issue đã đủ ý, nhưng có $n_ac acceptance criteria (nhiều hơn $MAX_CRITERIA), nên cần người xác nhận phạm vi."
                   fi
                   if [[ "$n_ac" -gt 0 ]]; then
                     echo
-                    if [[ "$too_many" == true ]]; then echo "**Acceptance criteria**"; else echo "**Proposed acceptance criteria**"; fi
+                    if [[ "$too_many" == true ]]; then echo "**Acceptance criteria**"; else L "**Proposed acceptance criteria**" "**Acceptance criteria đề xuất**"; fi
                     jq -r '.acceptance_criteria[] | "- [ ] \(.)"' <<<"$OUT"
                   fi
                   echo
@@ -270,8 +286,9 @@ jobs:
                 fi
               } >"$body" ;;
             reject)
-              { echo "$MARKER_S"; echo "**Triage:** not actionable."; echo; echo "$summary"; } >"$body"
+              { echo "$MARKER_S"; L "**Triage:** not actionable." "**Triage:** không thể xử lý issue này."; echo; echo "$summary"; } >"$body"
               dup=$(get '.duplicate_of // empty')
+              # "Duplicate of #N" stays in English in every language: GitHub recognises it.
               if [[ -n "$dup" ]]; then { echo; echo "Duplicate of #$dup."; } >>"$body"; fi ;;
           esac
           # GitHub rejects comments over 65536 characters. Never cut the text: hand the issue
@@ -282,7 +299,8 @@ jobs:
             decision=needs-human
             {
               echo "$MARKER_S"
-              echo "**Triage:** the triage result is too long to post as a comment, so this issue needs a person. The full result is in the [run log]($RUN_URL)."
+              L "**Triage:** the triage result is too long to post as a comment, so this issue needs a person. The full result is in the [run log]($RUN_URL)." \
+                "**Triage:** kết quả triage quá dài để đăng thành comment, nên issue này cần một người xử lý. Kết quả đầy đủ nằm trong [run log]($RUN_URL)."
               echo
               next_human
             } >"$body"

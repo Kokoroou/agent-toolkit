@@ -55,8 +55,13 @@ makes it need approval, and in CI that is a denial that wastes a turn.
    - `reject` — duplicate (name it in `duplicate_of`), spam, or not actionable.
 7. Classify `type`, `priority` (P0 outage/security … P3 nice-to-have), `risk`
    (conventions §6) and `size` (XS < 1h, S < ½ day, M ≈ 1 day, L ≈ 2–3 days, XL bigger).
+8. Reply in the author's language: the language the issue author writes the issue and
+   their replies in (if they switch, follow their latest reply; bot comments do not
+   count). Write `summary`, `questions` and `acceptance_criteria` in that language, keep
+   code, identifiers, file paths, label names and commands as they are, and set
+   `language` to its lowercase ISO 639-1 code (`en`, `vi`, …).
 
 Return the structured output only, with exactly these fields: `decision`, `score`,
-`type`, `priority`, `risk`, `size`, `summary`, `questions`, `acceptance_criteria`,
-`duplicate_of` (issue number or `null`). Use `[]` for an empty list. Keep `summary` to 2–4
-sentences for a maintainer and ask at most 3 questions.
+`type`, `priority`, `risk`, `size`, `language`, `summary`, `questions`,
+`acceptance_criteria`, `duplicate_of` (issue number or `null`). Use `[]` for an empty
+list. Keep `summary` to 2–4 sentences for a maintainer and ask at most 3 questions.
