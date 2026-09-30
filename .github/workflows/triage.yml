@@ -60,7 +60,8 @@ on:
       toolkit-marketplace:
         description: >-
           Git URL of the plugin marketplace to install the pipeline plugin from; `#<ref>`
-          pins a branch or tag. Keep it on the same ref as this workflow's `uses: …@<ref>`.
+          pins a branch or tag (the workflow clones it; a local path is used as is). Keep
+          it on the same ref as this workflow's `uses: …@<ref>`.
         type: string
         default: https://github.com/kokoroou/agent-toolkit.git#v0
       allowed-bots:
@@ -143,6 +144,24 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Fetch the pipeline plugin
+        id: plugin
+        if: steps.pre.outputs.skip != 'true'
+        env:
+          MARKETPLACE: ${{ inputs.toolkit-marketplace }}
+        run: |
+          set -euo pipefail
+          # claude-code-action takes a plain `https://….git` URL or a local path, not
+          # `…git#<ref>`: clone the ref here and hand the action the local copy.
+          if [[ "$MARKETPLACE" != http* ]]; then echo "path=$MARKETPLACE" >>"$GITHUB_OUTPUT"; exit 0; fi
+          url=${MARKETPLACE%%#*}; branch=()
+          if [[ "$MARKETPLACE" == *#* ]]; then branch=(--branch "${MARKETPLACE#*#}"); fi
+          dir="$RUNNER_TEMP/agent-toolkit-marketplace"
+          rm -rf "$dir"
+          git -c advice.detachedHead=false clone --quiet --depth 1 "${branch[@]}" -- "$url" "$dir"
+          echo "Pipeline plugin: $MARKETPLACE → $(git -C "$dir" rev-parse --short HEAD)"
+          echo "path=$dir" >>"$GITHUB_OUTPUT"
+
       - name: Claude triage (read-only)
         id: claude
         if: steps.pre.outputs.skip != 'true'
@@ -152,7 +171,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           allowed_bots: ${{ inputs.allowed-bots }}
-          plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
+          plugin_marketplaces: ${{ steps.plugin.outputs.path }}
           plugins: pipeline@agent-toolkit
           prompt: /pipeline:triage-issue ${{ inputs.issue-number }} ${{ steps.pre.outputs.rounds }} ${{ steps.pre.outputs.max_rounds }}
           claude_args: >-
