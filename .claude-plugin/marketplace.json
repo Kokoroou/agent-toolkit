@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Shared Claude Code plugins for the issue → PR → release agent pipeline.",
-    "version": "0.4.1"
+    "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "pipeline",
       "source": "./plugins/pipeline",
       "description": "Planner / implementer / reviewer sub-agents and slash commands used by the agent-toolkit GitHub workflows.",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "category": "development"
     }
   ]
