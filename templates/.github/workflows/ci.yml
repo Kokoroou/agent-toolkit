@@ -3,9 +3,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   push:
-    branches: [develop, main]
+    branches: [main]
   workflow_dispatch: # lets the pipeline start CI when it pushed with GITHUB_TOKEN
 
 concurrency:
@@ -32,7 +32,7 @@ jobs:
       coverage-command: >-
         npx jest --coverage --coverageReporters=json-summary >&2 &&
         node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)"
-      baseline-branch: develop
+      baseline-branch: main
       coverage-tolerance: "0"
     # Only the secrets this workflow uses (not `secrets: inherit`).
     secrets:

@@ -1,4 +1,4 @@
-# Runs after CI or Agent Review finishes. Merges green agent PRs into develop. A failed
+# Runs after CI or Agent Review finishes. Merges green agent PRs into base-branch. A failed
 # one gets a comment asking you to fix it in Claude Code (`/pipeline:build pr <n>`); with
 # the repository variable AGENT_AUTO_BUILD=true it goes back to the build agent on GitHub
 # Actions instead (circuit breaker in implement.yml).
@@ -26,7 +26,7 @@ jobs:
       actions: write
     with:
       head-sha: ${{ github.event.workflow_run.head_sha }}
-      base-branch: develop
+      base-branch: main
       required-label: agent
       required-statuses: agent/review
       auto-fix: ${{ vars.AGENT_AUTO_BUILD == 'true' }}
@@ -52,7 +52,7 @@ jobs:
       mode: fix
       pr-number: ${{ fromJSON(needs.gate.outputs.pr-number) }}
       head-sha: ${{ needs.gate.outputs.head-sha }}
-      base-branch: develop
+      base-branch: main
       max-fix-attempts: 3
       ci-workflow: CI
       # ── keep in sync with agent-implement.yml ─────────────────────────────

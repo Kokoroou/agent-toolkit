@@ -1,0 +1,38 @@
+# gitlab-flow branch model only (scripts/switch-branch-model.sh removes it for github-flow).
+# develop has changes main lacks → opens/refreshes the promotion PR develop → main, which
+# you merge (merge commit, not squash) after testing develop. main has changes develop
+# lacks (a release, a hotfix) → merges main back into develop, or opens a sync PR when
+# that needs a person. Both checks run on every trigger and do nothing when in step.
+name: Branch Sync
+
+on:
+  push:
+    branches: [develop, main]
+  workflow_run: # zizmor: ignore[dangerous-triggers] develop/main CI only; no PR code is checked out
+    workflows: [CI] # merges made with GITHUB_TOKEN start no push event, but the CI they dispatch does
+    types: [completed]
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: branch-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    uses: kokoroou/agent-toolkit/.github/workflows/branch-sync.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    with:
+      develop-branch: develop
+      main-branch: main
+      ci-dispatch-workflow: ci.yml
+    # Only the secrets this workflow uses (not `secrets: inherit`).
+    secrets:
+      agent_app_id: ${{ secrets.AGENT_APP_ID }}
+      agent_app_private_key: ${{ secrets.AGENT_APP_PRIVATE_KEY }}

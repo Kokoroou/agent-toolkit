@@ -29,6 +29,30 @@ for stack in node pnpm yarn python go none; do
   echo "-- $stack"; (cd "$d" && actionlint)
 done
 
+echo "== Branch models: github-flow (default), gitlab-flow callers against local reusable workflows"
+d="$tmp/github-flow"; mkdir -p "$d" && git -C "$d" init -q
+scripts/bootstrap.sh "$d" --stack node --no-labels >/dev/null
+[[ ! -e "$d/.github/workflows/branch-sync.yml" ]] || { echo "github-flow must not install branch-sync.yml"; exit 1; }
+if grep -rn 'develop' "$d/.github/workflows" "$d/.github/dependabot.yml" | grep -v '^[^:]*:[0-9]*: *#'; then
+  echo "github-flow files still target develop"; exit 1
+fi
+grep -qx 'branch-model=github-flow' "$d/.github/agent-toolkit.lock"
+d="$tmp/gitlab-flow"; mkdir -p "$d" && git -C "$d" init -q
+scripts/bootstrap.sh "$d" --stack node --branch-model gitlab-flow --no-labels >/dev/null
+w="$d/.github/workflows"
+[[ -f "$w/branch-sync.yml" ]] || { echo "gitlab-flow must install branch-sync.yml"; exit 1; }
+grep -qx 'branch-model=gitlab-flow' "$d/.github/agent-toolkit.lock"
+grep -qx '      base-branch: develop' "$w/agent-implement.yml"
+grep -qx '      baseline-branch: develop' "$w/ci.yml"
+grep -qx '    branches: \[develop\]' "$w/agent-review.yml"
+grep -qx '    target-branch: develop' "$d/.github/dependabot.yml"
+for f in "$w"/*.yml; do
+  sed 's#kokoroou/agent-toolkit/\(\.github/workflows/[a-z-]*\.yml\)@[A-Za-z0-9._-]*#./\1#' "$f" \
+    >"$w/caller-$(basename "$f")" && rm "$f"
+done
+cp .github/workflows/*.yml "$w/" && (cd "$d" && actionlint)
+if scripts/bootstrap.sh "$d" --branch-model trunk --no-labels >/dev/null 2>&1; then echo "--branch-model trunk accepted"; exit 1; fi
+
 echo "== bootstrap: commands follow the tools the project uses"
 t="$tmp/tools"
 fresh() { rm -rf "$t" && mkdir -p "$t" && git -C "$t" init -q; }
@@ -101,6 +125,38 @@ if ! { grep -q 'max-turns: 50' "$w/agent-implement.yml" && grep -q 'Issue to bui
   && grep -qx 'managed=.github/new-file.md' "$p/.github/agent-toolkit.lock" \
   && grep -qx 'tools=lint=ruff,format=ruff,test=pytest,coverage=yes,smoke=no' "$p/.github/agent-toolkit.lock"; }; then
   cat "$tmp/upgrade.log"; git -C "$p" diff; echo "upgrade.sh: unexpected result"; exit 1
+fi
+
+echo "== upgrade.sh --branch-model and switch-branch-model.sh: gitlab-flow ↔ github-flow"
+o="$tmp/switch-origin.git" p="$tmp/switch-project"
+git init -q --bare -b main "$o" && git clone -q "$o" "$p" 2>/dev/null
+git -C "$p" switch -q -c main && echo x >"$p/README" && gitc "$p" add -A && gitc "$p" commit -qm init
+git -C "$p" config user.name lint && git -C "$p" config user.email lint@localhost # the switch script commits
+"$tk/scripts/bootstrap.sh" "$p" --ref v9.9.9 --stack go --branch-model gitlab-flow --no-labels >/dev/null
+edit 's/max-turns: 80/max-turns: 50/' "$p/.github/workflows/agent-implement.yml" # a local edit to keep
+gitc "$p" add -A && gitc "$p" commit -qm install && git -C "$p" push -q origin main main:develop 2>/dev/null
+# develop holding work main lacks: refused.
+git -C "$p" switch -q -c feature origin/develop && echo y >"$p/y" && gitc "$p" add y && gitc "$p" commit -qm "feat: y"
+git -C "$p" push -q origin feature:develop 2>/dev/null && git -C "$p" switch -q main
+if scripts/switch-branch-model.sh github-flow "$p" --toolkit-dir "$tk" --yes >"$tmp/switch.log" 2>&1; then
+  cat "$tmp/switch.log"; echo "switch-branch-model.sh: expected a refusal while develop is ahead"; exit 1
+fi
+gitc "$p" merge -q --no-ff --no-edit origin/develop && git -C "$p" push -q origin main 2>/dev/null
+scripts/switch-branch-model.sh github-flow "$p" --toolkit-dir "$tk" --yes >"$tmp/switch.log" 2>&1 \
+  || { cat "$tmp/switch.log"; exit 1; }
+w="$p/.github/workflows"
+if ! { grep -qx '      base-branch: main' "$w/agent-implement.yml" && grep -q 'max-turns: 50' "$w/agent-implement.yml" \
+  && [[ ! -e "$w/branch-sync.yml" ]] && grep -qx 'branch-model=github-flow' "$p/.github/agent-toolkit.lock" \
+  && [[ -z "$(git -C "$p" status --porcelain)" ]] \
+  && [[ "$(git -C "$p" rev-parse HEAD)" == "$(git -C "$o" rev-parse main)" ]]; }; then
+  cat "$tmp/switch.log"; git -C "$p" status; echo "switch to github-flow: unexpected result"; exit 1
+fi
+scripts/switch-branch-model.sh gitlab-flow "$p" --toolkit-dir "$tk" --yes >"$tmp/switch.log" 2>&1 \
+  || { cat "$tmp/switch.log"; exit 1; }
+if ! { grep -qx '      base-branch: develop' "$w/agent-implement.yml" && grep -q 'max-turns: 50' "$w/agent-implement.yml" \
+  && [[ -f "$w/branch-sync.yml" ]] && grep -qx 'managed=.github/workflows/branch-sync.yml' "$p/.github/agent-toolkit.lock" \
+  && grep -qx 'branch-model=gitlab-flow' "$p/.github/agent-toolkit.lock"; }; then
+  cat "$tmp/switch.log"; echo "switch back to gitlab-flow: unexpected result"; exit 1
 fi
 
 echo "== labels.json readable without jq (one object per line, as bootstrap.sh parses it)"

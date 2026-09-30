@@ -19,7 +19,7 @@
 
 ## Conventions specific to this repo
 <!-- Only what differs from the toolkit defaults (Conventional Commits, tests for every
-     behaviour change, no coverage drop, develop ← agent/issue-N branches). -->
+     behaviour change, no coverage drop, agent/issue-N branches → the integration branch). -->
 -
 
 ## Secrets and untracked files

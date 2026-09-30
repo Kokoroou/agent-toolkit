@@ -1,13 +1,14 @@
 # Dependabot security + version updates are free on private repos.
-# Replace/extend the ecosystems for your project. PRs target develop and carry no
-# `agent` label, so the merge gate leaves them for a human.
+# Replace/extend the ecosystems for your project. PRs target the integration branch
+# (main, or develop with gitlab-flow) and carry no `agent` label, so the merge gate
+# leaves them for a human.
 version: 2
 updates:
   - package-ecosystem: github-actions
     cooldown: # wait before adopting a new release (compromised / broken publishes)
       default-days: 7
     directory: /
-    target-branch: develop
+    target-branch: main
     schedule:
       interval: weekly
     commit-message:
@@ -19,7 +20,7 @@ updates:
     cooldown: # wait before adopting a new release (compromised / broken publishes)
       default-days: 7
     directory: /
-    target-branch: develop
+    target-branch: main
     schedule:
       interval: weekly
     commit-message:

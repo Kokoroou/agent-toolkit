@@ -35,7 +35,7 @@ Mục lục:
 
 | Đường dẫn | Là gì | Ai dùng |
 |---|---|---|
-| `.github/workflows/{triage,implement,review,quality,merge-gate,release,usage-report}.yml` | Reusable workflow (`on: workflow_call`) — toàn bộ logic pipeline | Dự án gọi bằng `uses: …@v0` |
+| `.github/workflows/{triage,implement,review,quality,merge-gate,release,branch-sync,usage-report}.yml` | Reusable workflow (`on: workflow_call`) — toàn bộ logic pipeline | Dự án gọi bằng `uses: …@v0` |
 | `.github/workflows/self-test.yml` | CI của toolkit | Toolkit |
 | `.github/workflows/toolkit-release.yml` | Phát hành toolkit (gọi lại `release.yml`) + dời tag major | Toolkit |
 | `.claude-plugin/marketplace.json`, `plugins/pipeline/` | Marketplace + plugin Claude Code (agents, commands, skill) | Workflow agent cài qua `toolkit-marketplace`; người dùng cài tay |
@@ -44,6 +44,7 @@ Mục lục:
 | `scripts/install.sh`, `scripts/install.ps1` | Cài một lệnh: công cụ, bootstrap, secret, settings, commit (bản `.ps1` chỉ cài git/gh rồi chạy `install.sh` bằng Git Bash) | Người dùng, qua `curl …/main/scripts/install.sh \| bash` |
 | `scripts/bootstrap.sh`, `scripts/lint.sh` | Chép template + preset `--stack`, nhãn, `develop`, ghi `.github/agent-toolkit.lock`; kiểm tra toolkit | `install.sh` / người dùng; CI + bạn |
 | `scripts/upgrade.sh` | Nâng cấp file đã chép trong dự án: sinh lại bản cũ (theo lock) và bản mới bằng `bootstrap.sh`, 3-way merge | Người dùng, qua `curl …/main/scripts/upgrade.sh \| bash` |
+| `scripts/switch-branch-model.sh` | Chuyển dự án giữa gitlab-flow và github-flow: `upgrade.sh --branch-model`, commit, default branch, `develop` | Người dùng, qua `curl …/main/scripts/switch-branch-model.sh \| bash -s -- <mô hình>` |
 | `release-please-config.json`, `.release-please-manifest.json`, `version.txt`, `CHANGELOG.md` | Cấu hình và trạng thái phát hành | release-please |
 | `docs/` | Tài liệu (tiếng Anh `*.md`, tiếng Việt `*.vi.md`) | |
 

@@ -39,7 +39,7 @@ Contents:
 ## 1. What the pipeline does
 
 ```
-issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ develop ─▶ (you) ─▶ main ─▶ release
+issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implementer ─▶ PR ─▶ CI + reviewer ─▶ merge gate ─▶ main ─▶ (you) ─▶ release
 ```
 
 - You open an issue from the template (Goal / Constraints / Acceptance criteria).
@@ -48,16 +48,19 @@ issue ─▶ triage ─▶ (you: /pipeline:build) ─▶ planner ─▶ implemen
 - A clear issue gets `ready-for-plan` and a comment with the next step. You start the
   **build agent** when you want: `/pipeline:build N` in Claude Code on your machine or on
   the web. It creates branch `agent/issue-N`, plans, writes code + tests and, after you
-  confirm, opens a PR into `develop`. (Optional: set the repository variable
+  confirm, opens a PR into `main`. (Optional: set the repository variable
   `AGENT_AUTO_BUILD=true` to build issues with `risk` other than `high` and `size` ≤ M on
   GitHub Actions automatically, or add the `agent:implement` label to one issue.)
 - **CI** (lint, format, test, no coverage drop, Semgrep, Gitleaks) and the **reviewer
   agent** run on the PR.
-- The **merge gate** squash-merges green PRs into `develop`; on a red PR it comments with
+- The **merge gate** squash-merges green PRs into `main`; on a red PR it comments with
   `/pipeline:build pr P` for you to run (with `AGENT_AUTO_BUILD=true` it sends the PR back
   to the build agent on Actions instead, up to 3 times, then stops with `needs-human`).
-- You merge `develop` → `main` yourself; release-please creates the version, CHANGELOG and
-  GitHub Release.
+- release-please keeps a release PR open on `main`; merging it creates the version,
+  CHANGELOG and GitHub Release. (That is the default **github-flow**. A team that tests
+  on `develop` before `main` picks **gitlab-flow**: PRs go into `develop`, *Branch Sync*
+  keeps a promotion PR `develop` → `main` open and merges `main` back after each release —
+  [ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.md#71-branch-model-gitlab-flow-or-github-flow).)
 
 A project repo only keeps a few thin YAML files calling into the toolkit
 (`uses: kokoroou/agent-toolkit/...@v0`), so all the logic is updated from one place.
@@ -273,11 +276,11 @@ already Node + Jest, so the commands need almost no changes).
 | Changed requirements | Edit the body of an issue that is already `ready-for-plan` | Triage runs again, round count restarts at 0; the old agent PR (if any) gets `needs-human` |
 | Cancel | Close the issue | A running build does not push/open a PR; an open PR is neither fixed nor merged |
 | Clear issue, size S | "slugify strips Vietnamese diacritics", with 2–3 concrete acceptance criteria, then `/pipeline:build N` in Claude Code | `ready-for-plan` → PR `agent/issue-N` with `Closes #N` |
-| Green PR + approving review | Wait for CI and *Agent Review* to finish | The merge gate squashes into `develop`, deletes the branch, closes the issue |
+| Green PR + approving review | Wait for CI and *Agent Review* to finish | The merge gate squashes into `main` (`develop` with gitlab-flow), deletes the branch, closes the issue |
 | Red PR | Push a commit that breaks a test onto the agent branch | Merge gate comments `/pipeline:build pr P`; run it → the fix is pushed. With `AGENT_AUTO_BUILD=true`: `fix` → the agent commits a fix; after 3 times → `needs-human` |
 | High-risk PR | Add the `risk:high` label to an agent PR | The merge gate returns `blocked`, no merge |
 | Smoke fails after merge | Set `smoke-command: "false"` in `agent-merge-gate.yml` | After the merge a `revert/pr-N` PR appears with `needs-human` |
-| Release | Open a `develop` → `main` PR and merge it | release-please opens a release PR; merging it → tag + GitHub Release |
+| Release | Merge the release PR (gitlab-flow: first the promotion PR `develop` → `main`, as a merge commit) | tag + GitHub Release; with gitlab-flow Branch Sync merges it back into `develop` |
 
 ### 8.3 See what the agent did
 

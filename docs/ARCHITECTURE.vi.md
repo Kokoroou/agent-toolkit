@@ -4,8 +4,11 @@
 
 **Tóm tắt:** issue được *triage* (Claude chỉ trả JSON, bash gắn nhãn) → *build agent* viết
 code trong job chỉ có token đọc, job khác kiểm tra rồi mới push và mở PR → *CI* và
-*reviewer* chạy song song → *merge gate* merge PR xanh vào `develop` hoặc gửi đi sửa (tối đa
-3 lần) → bạn merge `develop` → `main` để phát hành. Mọi lỗi đều dừng ở nhãn `needs-human`.
+*reviewer* chạy song song → *merge gate* merge PR xanh vào `main` hoặc gửi đi sửa (tối đa
+3 lần) → bạn merge PR release của release-please (github-flow mặc định; với gitlab-flow PR
+vào `develop`, bạn merge PR promotion `develop` → `main` mà *Branch Sync* luôn giữ mở, và
+`main` được đồng bộ ngược về `develop` sau mỗi lần phát hành). Mọi lỗi đều dừng ở nhãn
+`needs-human`.
 Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu cầu và huỷ](#đổi-yêu-cầu-và-huỷ) ·
 [nguyên tắc thiết kế](#nguyên-tắc-thiết-kế) · [bẫy GitHub](#những-bẫy-của-github-đã-được-xử-lý) ·
 [nhãn](#nhãn).
@@ -49,9 +52,15 @@ Các mục dưới: [luồng chi tiết](#luồng-tổng-thể) · [đổi yêu 
    │   └─ merged  → squash, xoá branch, đóng issue
    │                 → smoke test trên develop; fail → PR revert (needs-human)
    ▼
- develop ──(bạn review, merge tay)──▶ main ─▶ release.yml (release-please: version,
-                                               CHANGELOG, tag, build, upload artifact)
+ develop ──(branch-sync.yml: PR promotion, bạn test + merge)──▶ main ─▶ release.yml
+    ▲                                                            │   (release-please: version,
+    └──(branch-sync.yml: merge main ngược về, hoặc PR sync)──────┘   CHANGELOG, tag, build,
+                                                                     upload artifact)
 ```
+
+Sơ đồ trên là mô hình nhánh gitlab-flow. Với github-flow mặc định
+([ADD-TO-PROJECT §7.1](ADD-TO-PROJECT.vi.md#71-mô-hình-nhánh-gitlab-flow-hay-github-flow))
+mọi `develop` ở trên đọc là `main`, và không có `branch-sync.yml`.
 
 Guardrail chạy song song: transcript mỗi lần Claude chạy được upload làm artifact
 (`transcript-<agent>-<n>`), mỗi job agent ghi chi phí/lượt/thời gian vào Step Summary,
