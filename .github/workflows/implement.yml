@@ -326,14 +326,39 @@ jobs:
           overwrite: true
           retention-days: 7
 
-      - name: Usage summary
+      - name: Run details (usage, tool calls, errors)
         if: always() && steps.claude.outputs.execution_file != ''
         env:
           EXEC: ${{ steps.claude.outputs.execution_file }}
         run: |
+          # The action hides Claude's output. Print what is needed to debug a run without
+          # downloading the transcript: how it ended, every tool call (input only) with its
+          # error or denial inline, and Claude's last message. Tool output is not printed.
           jq -r '[.[] | select(.type == "result")] | last // {} |
-            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s"' \
+            "Claude: $\(.total_cost_usd // "?") · \(.num_turns // "?") turns · \((.duration_ms // 0) / 1000 | floor)s · \(.subtype // "no result")"' \
             "$EXEC" >>"$GITHUB_STEP_SUMMARY" || true
+          echo "::group::Claude tool calls (errors and denials inline)"
+          jq -r '
+            def one: tostring | gsub("\\s+"; " ");
+            def text: if type == "array" then map(.text? // "") | join(" ") else . end | one;
+            ([.[] | select(.type == "user") | .message.content | arrays | .[]
+              | select(.type? == "tool_result") | {(.tool_use_id): .}] | add // {}) as $res
+            | [.[] | select(.type == "assistant") | .message.content[]? | select(.type? == "tool_use")]
+            | to_entries[] | .value as $t | $res[$t.id] as $r
+            | "#\(.key + 1) \($t.name): \($t.input | .command // .file_path // .pattern // .skill // . | one | .[0:300])"
+              + if $r.is_error then "\n     ✗ \($r.content | text | .[0:500])" else "" end' \
+            "$EXEC" || true
+          echo "::endgroup::"
+          jq -r '
+            ([.[] | select(.type == "assistant") | .message.content[]? | select(.type? == "text") | .text]
+              | last // "(none)" | gsub("\\s+"; " ") | .[0:1000]) as $said
+            | [.[] | select(.type == "result")] | last // {} |
+            ((.permission_denials // [])[]
+              | "::warning::Denied \(.tool_name): \(.tool_input | .command // .file_path // . | tostring | gsub("\\s+"; " ") | .[0:300])"),
+            (select(.is_error == true or .subtype == null)
+              | "::error::Claude run ended with \(.subtype // "no result") (\(.terminal_reason // "?")) after \(.num_turns // "?") turns: \((.errors // []) | join("; ") | gsub("\\s+"; " ") | .[0:500])",
+                "Last message from Claude: \($said)")' \
+            "$EXEC" || true
 
       - name: Upload transcript
         if: always() && steps.claude.outputs.execution_file != ''
