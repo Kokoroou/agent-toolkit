@@ -217,7 +217,8 @@ gọi nó rồi làm tiếp secret, settings và commit.
    | `.github/dependabot.yml` | Cập nhật dependency, PR vào `develop` |
    | `CLAUDE.md` | Khung hướng dẫn dự án cho agent |
 
-2. Thay `@main` trong các dòng `uses:` bằng `--ref`, điền lệnh theo `--stack` và công cụ
+2. Thay `@main` trong các dòng `uses:`, cùng `#main` / `"ref": "main"` của marketplace
+   plugin (`toolkit-marketplace` trong caller, `.claude/settings.json`), bằng `--ref`, điền lệnh theo `--stack` và công cụ
    đã nhận diện (§3) vào các khối `edit for your stack`, `dependabot.yml`, `release.yml` và
    mục *Commands* của `CLAUDE.md`.
 3. Tạo ~24 nhãn (`needs-triage`, `agent`, `risk:high`, `size:M`…) — chạy lại an toàn.
@@ -540,15 +541,16 @@ gom thành một dòng: `* msg ([30b8c69](…), [bf285b9](…))`.
 - `--ref v0` ghim vào **tag di động** của major hiện tại: nhận bản vá và tính năng mới,
   không nhận breaking change (trước 1.0.0, breaking change tăng minor nên `v0` vẫn có thể
   đổi hành vi — đọc [CHANGELOG](../CHANGELOG.md) khi cập nhật).
-- Ghim chặt hơn: `--ref v0.1.0` hoặc một commit SHA.
-- Plugin (agent/lệnh) được cài từ `toolkit-marketplace`, mặc định là nhánh mặc định của
-  toolkit. Để ghim cả plugin, thêm vào các job gọi `triage.yml`, `implement.yml`,
-  `review.yml` (kể cả job `fix`):
-
-  ```yaml
-  with:
-    toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#v0
-  ```
+- Ghim chặt hơn: `--ref v0.1.0`. Marketplace plugin được lấy theo nhánh hoặc tag, nên
+  dùng tag thay vì commit SHA.
+- `--ref main` để dùng thử bản sắp phát hành: các thay đổi đã merge vào toolkit nhưng
+  chưa phát hành. Chỉ bật cho dự án chấp nhận thử tính năng trước; quay về bản ổn định
+  bằng `upgrade.sh --to v0`.
+- Plugin (agent/lệnh) theo cùng ref: bootstrap ghi
+  `toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#<ref>` vào các job
+  gọi `triage.yml`, `implement.yml`, `review.yml` (kể cả job `fix`), và `"ref": "<ref>"`
+  vào `.claude/settings.json`. Caller thiếu dòng đó dùng `#v0`. Dự án đã cài trước nhận cả
+  hai qua `upgrade.sh` (§10.2).
 
 ### 10.1 Có hai thứ cần nâng cấp
 

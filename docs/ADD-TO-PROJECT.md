@@ -225,7 +225,8 @@ calls it and then continues with secrets, settings and the commit.
    | `.github/dependabot.yml` | Dependency updates, PRs into `develop` |
    | `CLAUDE.md` | Project guidance skeleton for the agents |
 
-2. Replaces `@main` in the `uses:` lines with `--ref`, and fills in the commands for the
+2. Replaces `@main` in the `uses:` lines, and `#main` / `"ref": "main"` of the plugin
+   marketplace (callers' `toolkit-marketplace`, `.claude/settings.json`), with `--ref`, and fills in the commands for the
    `--stack` and the detected tools (§3) in the `edit for your stack` blocks,
    `dependabot.yml`, `release.yml` and the *Commands* section of `CLAUDE.md`.
 3. Creates ~24 labels (`needs-triage`, `agent`, `risk:high`, `size:M`…) — safe to re-run.
@@ -554,15 +555,16 @@ several commits) are merged into one line: `* msg ([30b8c69](…), [bf285b9](…
 - `--ref v0` pins to the current major's **moving tag**: you get fixes and new features,
   but no breaking changes (before 1.0.0, breaking changes bump the minor, so `v0` can still
   change behavior — read the [CHANGELOG](../CHANGELOG.md) when updating).
-- Tighter pinning: `--ref v0.1.0` or a commit SHA.
-- The plugin (agents/commands) is installed from `toolkit-marketplace`, which defaults to
-  the toolkit's default branch. To pin the plugin too, add this to the jobs calling
-  `triage.yml`, `implement.yml`, `review.yml` (including the `fix` job):
-
-  ```yaml
-  with:
-    toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#v0
-  ```
+- Tighter pinning: `--ref v0.1.0`. The plugin marketplace is fetched by branch or tag,
+  so prefer a tag over a commit SHA.
+- `--ref main` previews the next release: changes merged into the toolkit but not yet
+  released. Opt in only on a project that agrees to try features first; back to stable
+  with `upgrade.sh --to v0`.
+- The plugin (agents/commands) follows the same ref: bootstrap writes
+  `toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#<ref>` into the jobs
+  calling `triage.yml`, `implement.yml`, `review.yml` (including the `fix` job), and
+  `"ref": "<ref>"` into `.claude/settings.json`. Callers without that line get `#v0`.
+  Projects installed earlier receive both through `upgrade.sh` (§10.2).
 
 ### 10.1 Two things to upgrade
 

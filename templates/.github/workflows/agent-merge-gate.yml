@@ -60,6 +60,7 @@ jobs:
       extra-allowed-tools: "Bash(npm ci),Bash(npm run:*),Bash(npm test:*),Bash(npx jest:*),Bash(npx prettier:*),Bash(npx eslint:*),Bash(npx tsc:*)"
       ci-dispatch-workflow: ci.yml
       review-dispatch-workflow: agent-review.yml
+      toolkit-marketplace: https://github.com/kokoroou/agent-toolkit.git#main # same ref as uses:
     # Only the secrets this workflow uses (not `secrets: inherit`).
     secrets:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

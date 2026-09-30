@@ -82,8 +82,11 @@ on:
         type: string
         default: ""
       toolkit-marketplace:
+        description: >-
+          Git URL of the plugin marketplace to install the pipeline plugin from; `#<ref>`
+          pins a branch or tag. Keep it on the same ref as this workflow's `uses: …@<ref>`.
         type: string
-        default: https://github.com/kokoroou/agent-toolkit.git
+        default: https://github.com/kokoroou/agent-toolkit.git#v0
       allowed-bots:
         description: >-
           Bots allowed to trigger Claude (claude-code-action refuses bot actors by default,

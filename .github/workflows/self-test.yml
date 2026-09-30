@@ -39,7 +39,9 @@ jobs:
         run: |
           d=$(mktemp -d) && git -C "$d" init -q
           scripts/bootstrap.sh "$d" --ref v1 --no-labels
-          ! grep -rn "agent-toolkit/.github/workflows/.*@main" "$d/.github/workflows"
+          grep -q '"ref": "v1"' "$d/.claude/settings.json"
+          ! grep -rnE 'agent-toolkit/\.github/workflows/.*@main|agent-toolkit\.git#main' "$d/.github/workflows"
+
 
   # Static security audit of the workflows (template injection, excessive permissions,
   # credential persistence, unpinned actions, known-vulnerable actions, …). Blocking

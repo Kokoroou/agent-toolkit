@@ -15,7 +15,7 @@ projects in use.
 2. Commits/PR titles follow **Conventional Commits** — release-please computes versions from them ([§4](#4-change-process)).
 3. Changing pipeline behavior → test on the sandbox repo before merging ([§5](#5-testing-on-the-sandbox-repo)).
 4. Releasing = merging the release PR opened by release-please; never edit versions by hand ([§6](#6-releasing)).
-5. Everything on `main` reaches `@v0` users immediately: renaming inputs/labels/commands is **breaking** ([§7](#7-compatibility-and-breaking-changes)).
+5. Every release reaches `@v0` users immediately (`main` itself only reaches projects that opted in to preview it): renaming inputs/labels/commands is **breaking** ([§7](#7-compatibility-and-breaking-changes)).
 
 Contents:
 
@@ -115,7 +115,7 @@ scripts/lint.sh
 6. `shellcheck scripts/*.sh`.
 
 `self-test.yml` runs this exact script on every PR and push to `main`, plus a bootstrap
-into a temporary repo to make sure no `@main` remains after pinning with `--ref`.
+into a temporary repo to make sure no `@main`/`#main` remains after pinning with `--ref`.
 
 Try the plugin you are editing without publishing:
 
@@ -177,6 +177,21 @@ Automated by `toolkit-release.yml` on every push to `main`:
    force-pushes the moving tag `vX` (e.g. `v0`) to the same commit. Every project pinned to
    `@v0` gets the new release on its next run.
 
+Trying unreleased changes: `main` is the **preview channel**. A project that wants to
+test features before the release switches to it on its own; projects on `@v0` see
+nothing until the release PR is merged:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kokoroou/agent-toolkit/main/scripts/upgrade.sh | bash -s -- --to main
+```
+
+This pins the reusable workflows (`@main`) **and** the plugin (`toolkit-marketplace: …#main`,
+`"ref": "main"` in `.claude/settings.json`). GitHub Actions installs the plugin fresh on
+every run; a local Claude Code session keeps its cached plugin until the version changes,
+so after a plugin change run
+`claude plugin marketplace update agent-toolkit && claude plugin update pipeline@agent-toolkit`.
+Back to stable: `upgrade.sh --to v0`.
+
 Notes:
 
 - Only `feat:`, `fix:` or breaking commits create a release PR. Merging a PR with only
@@ -206,7 +221,7 @@ Notes:
 ## 7. Compatibility and breaking changes
 
 Projects pin a moving tag, so **every change on `main` reaches users after release
-without them doing anything**. Treat the following as breaking (needs `!` and upgrade
+without them doing anything** (and before release, the projects previewing `main`). Treat the following as breaking (needs `!` and upgrade
 notes in the commit body):
 
 - Renaming/removing inputs, outputs or secrets of a reusable workflow; changing a default
@@ -239,10 +254,12 @@ and new releases** to generate files. So:
 - `lint.sh` has an upgrade test between two commits (local edit, upstream edit, conflict,
   new file) — run it after any change to `bootstrap.sh` or `upgrade.sh`.
 
-The plugin is installed from `toolkit-marketplace` (default: the default branch, i.e.
-`main`), **not** at the tag a project pins. So plugin changes must stay backward
-compatible with the reusable workflows of every major tag still in use, or projects must
-pin `#vX` for the marketplace.
+The plugin is installed from `toolkit-marketplace`, which callers set to the same ref as
+their `uses:` (`bootstrap.sh` pins both, and `"ref"` in `.claude/settings.json`); callers
+without that line get the default `#v0`. Projects installed before this pinning, or on
+`v1` without the line, still get the plugin at `#v0` — so keep plugin changes backward
+compatible with the reusable workflows of every major tag still in use, and bump that
+default when a new major ships.
 
 ## 8. Recurring tasks
 
