@@ -281,6 +281,26 @@ jobs:
           SETUP_COMMAND: ${{ inputs.setup-command }} # caller-owned; via env, not interpolated into the script
         run: eval "$SETUP_COMMAND"
 
+      - name: Resolve plugin marketplace
+        id: marketplace
+        env:
+          MARKETPLACE: ${{ inputs.toolkit-marketplace }}
+        # claude-code-action accepts only URLs ending in `.git` or local paths, so a
+        # `…git#<ref>` pin is fetched here and handed to it as a local path.
+        run: |
+          set -euo pipefail
+          if [[ "$MARKETPLACE" != *'#'* ]]; then
+            echo "Plugin marketplace: $MARKETPLACE"
+            echo "source=$MARKETPLACE" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          url=${MARKETPLACE%%#*}; ref=${MARKETPLACE#*#}
+          dir="$RUNNER_TEMP/agent-toolkit-marketplace"
+          rm -rf "$dir"; git init -q "$dir"
+          git -C "$dir" fetch -q --depth 1 "$url" "$ref"
+          git -C "$dir" checkout -q FETCH_HEAD
+          echo "Plugin marketplace: $url @ $ref ($(git -C "$dir" rev-parse HEAD)) -> $dir"
+          echo "source=$dir" >>"$GITHUB_OUTPUT"
+
       - name: Claude Code
         id: claude
         uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
@@ -292,7 +312,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           allowed_bots: ${{ inputs.allowed-bots }}
-          plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
+          plugin_marketplaces: ${{ steps.marketplace.outputs.source }}
           plugins: pipeline@agent-toolkit
           prompt: >-
             ${{ inputs.mode == 'fix'
