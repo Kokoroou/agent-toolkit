@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/Kokoroou/agent-toolkit/compare/v0.5.0...v0.5.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* fetch a ref-pinned plugin marketplace before claude-code-action ([ea9156e](https://github.com/Kokoroou/agent-toolkit/commit/ea9156eae4dd68e1a160e5fe7f2b3a9f94597469))
+
 ## [0.5.0](https://github.com/Kokoroou/agent-toolkit/compare/v0.4.1...v0.5.0) (2026-09-30)
 
 

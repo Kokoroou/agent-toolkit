@@ -1,6 +1,6 @@
 {
   "name": "pipeline",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Sub-agents (planner, implementer, reviewer) and commands (/triage-issue, /plan-feature, /implement-issue, /fix-pr, /review-pr) and the /build skill for the agent-driven issue → release pipeline.",
   "author": {
     "name": "kokoroou"
