@@ -84,6 +84,27 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Resolve plugin marketplace
+        id: marketplace
+        if: steps.pre.outputs.skip != 'true'
+        env:
+          MARKETPLACE: ${{ inputs.toolkit-marketplace }}
+        # claude-code-action accepts only URLs ending in `.git` or local paths, so a
+        # `…git#<ref>` pin is fetched here and handed to it as a local path.
+        run: |
+          set -euo pipefail
+          if [[ "$MARKETPLACE" != *'#'* ]]; then
+            echo "Plugin marketplace: $MARKETPLACE"
+            echo "source=$MARKETPLACE" >>"$GITHUB_OUTPUT"; exit 0
+          fi
+          url=${MARKETPLACE%%#*}; ref=${MARKETPLACE#*#}
+          dir="$RUNNER_TEMP/agent-toolkit-marketplace"
+          rm -rf "$dir"; git init -q "$dir"
+          git -C "$dir" fetch -q --depth 1 "$url" "$ref"
+          git -C "$dir" checkout -q FETCH_HEAD
+          echo "Plugin marketplace: $url @ $ref ($(git -C "$dir" rev-parse HEAD)) -> $dir"
+          echo "source=$dir" >>"$GITHUB_OUTPUT"
+
       - name: Claude review
         id: claude
         if: steps.pre.outputs.skip != 'true'
@@ -93,7 +114,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           github_token: ${{ github.token }}
           allowed_bots: ${{ inputs.allowed-bots }}
-          plugin_marketplaces: ${{ inputs.toolkit-marketplace }}
+          plugin_marketplaces: ${{ steps.marketplace.outputs.source }}
           plugins: pipeline@agent-toolkit
           prompt: /pipeline:review-pr ${{ inputs.pr-number }}
           claude_args: >-
